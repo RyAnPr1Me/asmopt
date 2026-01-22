@@ -82,8 +82,8 @@ The optimizer is designed with the explicit goal that its output should be **at 
 
 #### 2.2.1 Input Handler
 - **File Reader**: Reads assembly source files from disk or stdin
-- **Syntax Validator**: Performs basic syntax validation
-- **Architecture Detector**: Identifies target architecture (x86, x86-64, ARM, etc.)
+- **Syntax Validator**: Performs basic syntax validation for x86/x86-64 assembly
+- **Architecture Detector**: Identifies whether input is x86 (32-bit) or x86-64 (64-bit)
 
 #### 2.2.2 Parser & IR
 - **Lexer**: Tokenizes assembly instructions, directives, and labels
@@ -568,7 +568,6 @@ dec rax                       ; Creates -1
 ```
 
 **AMD: LEA Optimization (Zen-specific)**
-**AMD: LEA Optimization (Zen-specific)**
 ```assembly
 ; AMD Zen has different LEA characteristics than Intel
 ; Simple LEA (base + offset or base + index) is fast
@@ -967,7 +966,7 @@ asmopt [options] input.s -o output.s
 ```
 -i, --input <file>       Input assembly file (or stdin if not specified)
 -o, --output <file>      Output assembly file (or stdout if not specified)
--f, --format <format>    Input/output format (intel, att, arm, riscv)
+-f, --format <format>    Input/output syntax format (intel, att)
 ```
 
 #### 10.2.2 Optimization Control
