@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+# Compatible with Python 3.8+.
+
 import argparse
 import sys
 from typing import Iterable, Optional

@@ -9,6 +9,10 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 _COMMENT_MARKERS = (";", "#")
 _IMM_PREFIX = "$"
+_MOV_PREFIX = "mov"
+_MOV_SUFFIXES = set("bwlq")
+_INSTRUCTION_RE = re.compile(r"(\s*)([A-Za-z][A-Za-z0-9.]*)(\s+)?(.*)?")
+_JUMP_TARGET_RE = re.compile(r"^[A-Za-z_\\.][A-Za-z0-9_\\.]*$")
 
 
 @dataclass
@@ -254,7 +258,7 @@ class Optimizer:
         return False
 
     def _parse_instruction(self, code: str) -> Optional[Tuple[str, str, str, str]]:
-        match = re.match(r"(\s*)([A-Za-z][A-Za-z0-9.]*)(\s+)?(.*)?", code)
+        match = _INSTRUCTION_RE.match(code)
         if not match:
             return None
         indent, mnemonic, spacing, operands = match.groups()
@@ -316,9 +320,9 @@ class Optimizer:
         op1, op2, pre_space, post_space = operands_info
         mnemonic_lower = mnemonic.lower()
         suffix = ""
-        if mnemonic_lower == "mov":
+        if mnemonic_lower == _MOV_PREFIX:
             suffix = ""
-        elif len(mnemonic_lower) == 4 and mnemonic_lower.startswith("mov") and mnemonic_lower[3] in "bwlq":
+        elif len(mnemonic_lower) == 4 and mnemonic_lower.startswith(_MOV_PREFIX) and mnemonic_lower[3] in _MOV_SUFFIXES:
             suffix = mnemonic_lower[3]
         else:
             return line, False, False
@@ -443,4 +447,4 @@ class Optimizer:
             return None
         target = instr.operands[0]
         target = target.lstrip("*")
-        return target if re.match(r"^[A-Za-z_\.][A-Za-z0-9_\.]*$", target) else None
+        return target if _JUMP_TARGET_RE.match(target) else None
