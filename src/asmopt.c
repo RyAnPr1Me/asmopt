@@ -694,6 +694,12 @@ static long asmopt_parse_immediate(const char* operand, const char* syntax, bool
     return value;
 }
 
+static bool asmopt_is_immediate_minus_one(const char* operand, const char* syntax) {
+    bool success = false;
+    long value = asmopt_parse_immediate(operand, syntax, &success);
+    return success && value == -1;
+}
+
 static bool asmopt_is_power_of_two(long value) {
     return value > 0 && (value & (value - 1)) == 0;
 }
@@ -936,8 +942,13 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
         }
     }
     
-    /* Pattern 9: test/cmp rax, rax -> can be optimized in some cases but keep for flags */
-    /* Pattern 10: and rax, rax -> test rax, rax (if only flags are needed, but we don't have dataflow) */
+    /* Pattern 9: and rax, -1 -> remove (identity, all bits set) */
+    if (strcmp(base_mnemonic, "and") == 0 && has_two_ops) {
+        if (asmopt_is_immediate_minus_one(src, syntax)) {
+            asmopt_handle_identity_removal(ctx, line_no, "and_minus_one", line, comment, indent, removed);
+            goto cleanup;
+        }
+    }
     
     /* No optimization applied, store original */
     asmopt_store_optimized_line(ctx, line);

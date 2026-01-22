@@ -1,0 +1,296 @@
+/*
+ * Unit tests for peephole optimization patterns
+ */
+
+#include "../include/asmopt.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <assert.h>
+
+#define TEST_ASSERT(condition, message) do { \
+    if (!(condition)) { \
+        fprintf(stderr, "FAIL: %s\n", message); \
+        return 0; \
+    } \
+} while(0)
+
+#define TEST_PASS(name) do { \
+    fprintf(stdout, "PASS: %s\n", name); \
+    return 1; \
+} while(0)
+
+/* Test Pattern 1: Redundant mov elimination */
+static int test_redundant_mov() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "mov rax, rax\nmov rbx, rcx\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "mov rax, rax") == NULL, "Redundant mov not removed");
+    TEST_ASSERT(strstr(output, "mov rbx, rcx") != NULL, "Valid mov was removed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_redundant_mov");
+}
+
+/* Test Pattern 2: mov zero to xor */
+static int test_mov_zero_to_xor() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "mov rax, 0\nmov rbx, 5\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "xor rax, rax") != NULL, "mov 0 not converted to xor");
+    TEST_ASSERT(strstr(output, "mov rbx, 5") != NULL, "mov with non-zero was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_mov_zero_to_xor");
+}
+
+/* Test Pattern 3: Multiply by one elimination */
+static int test_mul_by_one() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "imul rax, 1\nimul rbx, 2\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "imul rax, 1") == NULL, "Multiply by 1 not removed");
+    TEST_ASSERT(strstr(output, "imul rbx, 2") != NULL || strstr(output, "shl rbx") != NULL, 
+                "Valid multiply was incorrectly removed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_mul_by_one");
+}
+
+/* Test Pattern 4: Power of 2 multiply to shift */
+static int test_mul_power_of_2() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "imul rax, 8\nimul rbx, 3\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "shl rax, 3") != NULL, "Power of 2 multiply not converted to shift");
+    TEST_ASSERT(strstr(output, "imul rbx, 3") != NULL, "Non-power-of-2 multiply was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_mul_power_of_2");
+}
+
+/* Test Pattern 5: Add/sub zero elimination */
+static int test_add_sub_zero() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "add rax, 0\nsub rbx, 0\nadd rcx, 5\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "add rax, 0") == NULL, "Add zero not removed");
+    TEST_ASSERT(strstr(output, "sub rbx, 0") == NULL, "Sub zero not removed");
+    TEST_ASSERT(strstr(output, "add rcx, 5") != NULL, "Valid add was removed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_add_sub_zero");
+}
+
+/* Test Pattern 6: Shift by zero elimination */
+static int test_shift_zero() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "shl rax, 0\nshr rbx, 0\nshl rcx, 3\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "shl rax, 0") == NULL, "Shift by zero not removed");
+    TEST_ASSERT(strstr(output, "shr rbx, 0") == NULL, "Shift by zero not removed");
+    TEST_ASSERT(strstr(output, "shl rcx, 3") != NULL, "Valid shift was removed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_shift_zero");
+}
+
+/* Test Pattern 7: OR zero elimination */
+static int test_or_zero() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "or rax, 0\nor rbx, 5\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "or rax, 0") == NULL, "OR zero not removed");
+    TEST_ASSERT(strstr(output, "or rbx, 5") != NULL, "Valid OR was removed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_or_zero");
+}
+
+/* Test Pattern 8: XOR zero immediate elimination (preserve xor reg,reg) */
+static int test_xor_zero() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "xor rax, 0\nxor rbx, rbx\nxor rcx, 5\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "xor rax, 0") == NULL, "XOR with immediate zero not removed");
+    TEST_ASSERT(strstr(output, "xor rbx, rbx") != NULL, "Zero idiom xor reg,reg was removed");
+    TEST_ASSERT(strstr(output, "xor rcx, 5") != NULL, "Valid XOR was removed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_xor_zero");
+}
+
+/* Test optimization statistics */
+static int test_optimization_stats() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "mov rax, rax\nmov rbx, 0\nadd rcx, 0\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    size_t original, optimized, replacements, removals;
+    asmopt_get_stats(ctx, &original, &optimized, &replacements, &removals);
+    
+    TEST_ASSERT(original > 0, "Original line count is zero");
+    TEST_ASSERT(replacements == 1, "Expected 1 replacement (mov 0 -> xor)");
+    TEST_ASSERT(removals == 2, "Expected 2 removals (mov rax,rax and add rcx,0)");
+    
+    asmopt_destroy(ctx);
+    TEST_PASS("test_optimization_stats");
+}
+
+/* Test report generation */
+static int test_report_generation() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "mov rax, 0\nimul rbx, 8\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* report = asmopt_generate_report(ctx);
+    TEST_ASSERT(report != NULL, "Failed to generate report");
+    TEST_ASSERT(strstr(report, "Optimization Report") != NULL, "Report missing header");
+    TEST_ASSERT(strstr(report, "mov_zero_to_xor") != NULL, "Report missing pattern name");
+    TEST_ASSERT(strstr(report, "mul_power_of_2_to_shift") != NULL, "Report missing pattern name");
+    
+    free(report);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_report_generation");
+}
+
+/* Test context creation and destruction */
+static int test_context_lifecycle() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    asmopt_set_optimization_level(ctx, 3);
+    asmopt_set_target_cpu(ctx, "zen3");
+    asmopt_enable_optimization(ctx, "peephole");
+    
+    asmopt_destroy(ctx);
+    TEST_PASS("test_context_lifecycle");
+}
+
+/* Test with comments preservation */
+static int test_comments_preservation() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "mov rax, rax  ; This is a comment\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "This is a comment") != NULL, "Comment was not preserved");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_comments_preservation");
+}
+
+/* Test with directives and labels */
+static int test_directives_and_labels() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = ".text\n.globl main\nmain:\nmov rax, 0\nret\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, ".text") != NULL, "Directive was removed");
+    TEST_ASSERT(strstr(output, ".globl main") != NULL, "Directive was removed");
+    TEST_ASSERT(strstr(output, "main:") != NULL, "Label was removed");
+    TEST_ASSERT(strstr(output, "xor rax, rax") != NULL, "Optimization not applied");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_directives_and_labels");
+}
+
+int main() {
+    int passed = 0;
+    int total = 0;
+    
+    printf("Running asmopt unit tests...\n\n");
+    
+    total++; passed += test_redundant_mov();
+    total++; passed += test_mov_zero_to_xor();
+    total++; passed += test_mul_by_one();
+    total++; passed += test_mul_power_of_2();
+    total++; passed += test_add_sub_zero();
+    total++; passed += test_shift_zero();
+    total++; passed += test_or_zero();
+    total++; passed += test_xor_zero();
+    total++; passed += test_optimization_stats();
+    total++; passed += test_report_generation();
+    total++; passed += test_context_lifecycle();
+    total++; passed += test_comments_preservation();
+    total++; passed += test_directives_and_labels();
+    
+    printf("\n========================================\n");
+    printf("Test Results: %d/%d tests passed\n", passed, total);
+    printf("========================================\n");
+    
+    return (passed == total) ? 0 : 1;
+}
