@@ -629,9 +629,10 @@ static bool asmopt_is_immediate_one(const char* operand, const char* syntax) {
         long value = strtol(op, &end, 16);
         return end != op && *end == '\0' && value == 1;
     }
-    if (op[strlen(op) - 1] == 'h') {
+    size_t op_len = strlen(op);
+    if (op_len > 0 && op[op_len - 1] == 'h') {
         char buffer[IMMEDIATE_BUFFER_SIZE];
-        size_t len = strlen(op) - 1;
+        size_t len = op_len - 1;
         if (len >= IMMEDIATE_BUFFER_SIZE) {
             return false;
         }
@@ -668,21 +669,24 @@ static long asmopt_parse_immediate(const char* operand, const char* syntax, bool
     long value = 0;
     if (asmopt_starts_with(op, "0x")) {
         value = strtol(op, &end, 16);
-    } else if (op[strlen(op) - 1] == 'h') {
-        char buffer[IMMEDIATE_BUFFER_SIZE];
-        size_t len = strlen(op) - 1;
-        if (len >= IMMEDIATE_BUFFER_SIZE) {
-            return 0;
-        }
-        memcpy(buffer, op, len);
-        buffer[len] = '\0';
-        value = strtol(buffer, &end, 16);
-        if (end != buffer && *end == '\0') {
-            *success = true;
-        }
-        return value;
     } else {
-        value = strtol(op, &end, 10);
+        size_t op_len = strlen(op);
+        if (op_len > 0 && op[op_len - 1] == 'h') {
+            char buffer[IMMEDIATE_BUFFER_SIZE];
+            size_t len = op_len - 1;
+            if (len >= IMMEDIATE_BUFFER_SIZE) {
+                return 0;
+            }
+            memcpy(buffer, op, len);
+            buffer[len] = '\0';
+            value = strtol(buffer, &end, 16);
+            if (end != buffer && *end == '\0') {
+                *success = true;
+            }
+            return value;
+        } else {
+            value = strtol(op, &end, 10);
+        }
     }
     if (end != op && *end == '\0') {
         *success = true;
@@ -828,10 +832,12 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
             }
             char* newline = malloc(new_len + 1);
             if (newline) {
-                snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s", indent, xor_name, spacing, dest, pre_space, post_space, dest);
                 if (!asmopt_is_blank(trimmed_comment)) {
-                    strcat(newline, " ");
-                    strcat(newline, trimmed_comment);
+                    snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s %s", 
+                            indent, xor_name, spacing, dest, pre_space, post_space, dest, trimmed_comment);
+                } else {
+                    snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s", 
+                            indent, xor_name, spacing, dest, pre_space, post_space, dest);
                 }
                 asmopt_record_optimization(ctx, line_no, "mov_zero_to_xor", line, newline);
                 asmopt_store_optimized_line(ctx, newline);
@@ -887,10 +893,12 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
             }
             char* newline = malloc(new_len + 1);
             if (newline) {
-                snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s", indent, shl_name, spacing, dest, pre_space, post_space, shift_str);
                 if (!asmopt_is_blank(trimmed_comment)) {
-                    strcat(newline, " ");
-                    strcat(newline, trimmed_comment);
+                    snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s %s", 
+                            indent, shl_name, spacing, dest, pre_space, post_space, shift_str, trimmed_comment);
+                } else {
+                    snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s", 
+                            indent, shl_name, spacing, dest, pre_space, post_space, shift_str);
                 }
                 asmopt_record_optimization(ctx, line_no, "mul_power_of_2_to_shift", line, newline);
                 asmopt_store_optimized_line(ctx, newline);
