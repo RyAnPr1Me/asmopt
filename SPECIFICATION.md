@@ -473,7 +473,7 @@ add rax, rbx
 #### 4.7.3 Strength Reduction in Loops
 ```assembly
 ; Before
-xor rcx, 0
+xor rcx, rcx
 .loop:
     mov rax, rcx
     imul rax, 4               ; Expensive multiply
@@ -484,7 +484,7 @@ xor rcx, 0
     jl .loop
 
 ; After
-xor rcx, 0
+xor rcx, rcx
 xor rax, rax                  ; rax = rcx * 4
 .loop:
     mov rbx, [array + rax]
@@ -505,10 +505,14 @@ Replaces expensive operations with cheaper equivalents.
 **Division/Multiplication by Powers of 2**
 ```assembly
 ; Before
-idiv rcx, 16
+mov rax, [value]
+mov rcx, 16
+xor rdx, rdx
+idiv rcx                      ; RAX = RAX / 16
 
 ; After
-sar rcx, 4
+mov rax, [value]
+sar rax, 4                    ; RAX = RAX / 16 (arithmetic shift)
 ```
 
 **Modulo by Powers of 2**
@@ -547,40 +551,45 @@ jl .target                    ; Compare-and-branch fusion
 ; Before
 mov rax, 0
 
-; After (recognized as zero idiom - no execution unit needed)
-xor rax, rax
+; After (recognized as zero idiom - dependency breaking)
+xor rax, rax                  ; Breaks dependency chain on AMD
 ```
 
-**Intel: Ones Idiom**
+**AMD: Ones Idiom (Zen+)**
 ```assembly
 ; Before
 mov rax, -1
 
-; After (recognized as ones idiom on modern Intel)
+; After (dependency breaking on Zen+)
 pcmpeqd xmm0, xmm0           ; For SIMD registers
-; or
+; or for GPRs:
 xor rax, rax
-not rax                       ; For GPRs
+dec rax                       ; Creates -1
 ```
 
-**AMD: Different Port Mapping**
+**AMD: LEA Optimization (Zen-specific)**
+**AMD: LEA Optimization (Zen-specific)**
 ```assembly
-; Optimize instruction order based on AMD execution ports
-; Example: Schedule LEA instructions considering AMD's port 1/2 mapping
-; versus Intel's port 1/5 mapping
+; AMD Zen has different LEA characteristics than Intel
+; Simple LEA (base + offset or base + index) is fast
+; Complex 3-component LEA has higher latency
+
+; Before (complex LEA)
+lea rax, [rbx + rcx*4 + 8]   ; 3-component, slower on Zen
+
+; After (if beneficial, split into simpler operations)
+lea rax, [rbx + rcx*4]       ; 2-component LEA
+add rax, 8                    ; Simple add
+; Only do this if it improves throughput
 ```
 
-**ARM: Conditional Execution**
+**AMD: TZCNT/LZCNT Preference (Zen+)**
 ```assembly
-; Before (using branches)
-cmp r0, #0
-beq .skip
-mov r1, #5
-.skip:
+; Before
+bsf rax, rbx                  ; Bit scan forward
 
-; After (using conditional execution)
-cmp r0, #0
-movne r1, #5                 ; Only execute if not equal
+; After (on AMD with BMI1)
+tzcnt rax, rbx                ; Faster and no false dependency
 ```
 
 #### 4.11.3 Cache Optimization
