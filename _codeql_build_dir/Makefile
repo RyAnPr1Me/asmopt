@@ -68,6 +68,16 @@ CMAKE_BINARY_DIR = /home/runner/work/asmopt/asmopt/_codeql_build_dir
 #=============================================================================
 # Targets provided globally by CMake.
 
+# Special rule for the target test
+test:
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Running tests..."
+	/usr/local/bin/ctest --force-new-ctest-process $(ARGS)
+.PHONY : test
+
+# Special rule for the target test
+test/fast: test
+.PHONY : test/fast
+
 # Special rule for the target edit_cache
 edit_cache:
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Running CMake cache editor..."
@@ -145,6 +155,32 @@ asmopt/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/asmopt.dir/build.make CMakeFiles/asmopt.dir/build
 .PHONY : asmopt/fast
 
+#=============================================================================
+# Target rules for targets named test_peephole
+
+# Build rule for target.
+test_peephole: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_peephole
+.PHONY : test_peephole
+
+# fast build rule for target.
+test_peephole/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_peephole.dir/build.make CMakeFiles/test_peephole.dir/build
+.PHONY : test_peephole/fast
+
+#=============================================================================
+# Target rules for targets named test_integration
+
+# Build rule for target.
+test_integration: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_integration
+.PHONY : test_integration
+
+# fast build rule for target.
+test_integration/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_integration.dir/build.make CMakeFiles/test_integration.dir/build
+.PHONY : test_integration/fast
+
 src/asmopt.o: src/asmopt.c.o
 .PHONY : src/asmopt.o
 
@@ -193,6 +229,54 @@ src/main.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/asmopt.dir/build.make CMakeFiles/asmopt.dir/src/main.c.s
 .PHONY : src/main.c.s
 
+tests/test_integration.o: tests/test_integration.c.o
+.PHONY : tests/test_integration.o
+
+# target to build an object file
+tests/test_integration.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_integration.dir/build.make CMakeFiles/test_integration.dir/tests/test_integration.c.o
+.PHONY : tests/test_integration.c.o
+
+tests/test_integration.i: tests/test_integration.c.i
+.PHONY : tests/test_integration.i
+
+# target to preprocess a source file
+tests/test_integration.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_integration.dir/build.make CMakeFiles/test_integration.dir/tests/test_integration.c.i
+.PHONY : tests/test_integration.c.i
+
+tests/test_integration.s: tests/test_integration.c.s
+.PHONY : tests/test_integration.s
+
+# target to generate assembly for a file
+tests/test_integration.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_integration.dir/build.make CMakeFiles/test_integration.dir/tests/test_integration.c.s
+.PHONY : tests/test_integration.c.s
+
+tests/test_peephole.o: tests/test_peephole.c.o
+.PHONY : tests/test_peephole.o
+
+# target to build an object file
+tests/test_peephole.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_peephole.dir/build.make CMakeFiles/test_peephole.dir/tests/test_peephole.c.o
+.PHONY : tests/test_peephole.c.o
+
+tests/test_peephole.i: tests/test_peephole.c.i
+.PHONY : tests/test_peephole.i
+
+# target to preprocess a source file
+tests/test_peephole.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_peephole.dir/build.make CMakeFiles/test_peephole.dir/tests/test_peephole.c.i
+.PHONY : tests/test_peephole.c.i
+
+tests/test_peephole.s: tests/test_peephole.c.s
+.PHONY : tests/test_peephole.s
+
+# target to generate assembly for a file
+tests/test_peephole.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_peephole.dir/build.make CMakeFiles/test_peephole.dir/tests/test_peephole.c.s
+.PHONY : tests/test_peephole.c.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -201,14 +285,23 @@ help:
 	@echo "... depend"
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
+	@echo "... test"
 	@echo "... asmopt"
 	@echo "... asmopt_lib"
+	@echo "... test_integration"
+	@echo "... test_peephole"
 	@echo "... src/asmopt.o"
 	@echo "... src/asmopt.i"
 	@echo "... src/asmopt.s"
 	@echo "... src/main.o"
 	@echo "... src/main.i"
 	@echo "... src/main.s"
+	@echo "... tests/test_integration.o"
+	@echo "... tests/test_integration.i"
+	@echo "... tests/test_integration.s"
+	@echo "... tests/test_peephole.o"
+	@echo "... tests/test_peephole.i"
+	@echo "... tests/test_peephole.s"
 .PHONY : help
 
 
