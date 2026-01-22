@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 
 _COMMENT_MARKERS = (";", "#")
+_IMM_PREFIX = "$"
 
 
 @dataclass
@@ -263,8 +264,8 @@ class Optimizer:
         if "," not in operands:
             return None
         before, after = operands.split(",", 1)
-        pre_space = before[len(before.rstrip()) :]
-        post_space = after[: len(after) - len(after.lstrip())]
+        pre_space = self._trailing_space(before)
+        post_space = self._leading_space(after)
         return before.strip(), after.strip(), pre_space, post_space
 
     def _normalize_register(self, operand: str, syntax: str) -> Optional[str]:
@@ -273,7 +274,7 @@ class Optimizer:
             if not op.startswith("%"):
                 return None
             op = op[1:]
-        if op.startswith("$"):
+        if op.startswith(_IMM_PREFIX):
             return None
         if any(ch in op for ch in "[]()"):
             return None
@@ -286,12 +287,20 @@ class Optimizer:
     def _is_immediate_zero(self, operand: str, syntax: str) -> bool:
         op = operand.strip().lower()
         if syntax == "att":
-            if not op.startswith("$"):
+            if not op.startswith(_IMM_PREFIX):
                 return False
-            op = op[1:]
+            op = op[len(_IMM_PREFIX) :]
         if op in {"0", "0x0"}:
             return True
         return False
+
+    @staticmethod
+    def _trailing_space(text: str) -> str:
+        return text[len(text.rstrip()) :]
+
+    @staticmethod
+    def _leading_space(text: str) -> str:
+        return text[: len(text) - len(text.lstrip())]
 
     def _peephole_line(self, line: str, syntax: str) -> Tuple[Optional[str], bool, bool]:
         code, comment = self._split_comment(line)

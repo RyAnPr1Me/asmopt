@@ -33,12 +33,17 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-q", "--quiet", action="store_true")
     parser.add_argument("-m", "--march", dest="march")
     parser.add_argument("--mtune", dest="mtune")
-    parser.add_argument(
-        "--amd-optimize",
-        dest="amd_optimize",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-    )
+    if hasattr(argparse, "BooleanOptionalAction"):
+        parser.add_argument(
+            "--amd-optimize",
+            dest="amd_optimize",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+        )
+    else:
+        group = parser.add_mutually_exclusive_group()
+        group.add_argument("--amd-optimize", dest="amd_optimize", action="store_true", default=True)
+        group.add_argument("--no-amd-optimize", dest="amd_optimize", action="store_false")
     return parser
 
 
