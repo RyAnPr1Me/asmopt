@@ -44,36 +44,43 @@ Please refer to [SPECIFICATION.md](SPECIFICATION.md)
 ## Quick Start
 
 ```bash
+# Configure and build
+cmake -S . -B build
+cmake --build build
+
 # Basic optimization for x86-64
-python -m asmopt input.s -o output.s
+./build/asmopt input.s -o output.s
 
 # Optimize for AMD Zen 3 with maximum optimization
-python -m asmopt -O3 --mtune zen3 --report report.txt input.s -o output.s
+./build/asmopt -O3 --mtune zen3 --report report.txt input.s -o output.s
 
 # Convert AT&T syntax to Intel syntax while optimizing
-python -m asmopt -f intel input_att.s -o output_intel.s
+./build/asmopt -f intel input_att.s -o output_intel.s
 ```
 
-## Python API
+## C API
 
-```python
-import asmopt
+```c
+#include "asmopt.h"
 
-opt = asmopt.Optimizer(architecture="x86-64", target_cpu="zen3")
-opt.set_optimization_level(2)
-opt.enable_optimization("peephole")
-opt.enable_amd_optimizations(True)
-opt.load_file("input.s")
-opt.optimize()
-print(opt.get_assembly())
-print(opt.get_report())
-print(opt.get_statistics())
-opt.save("output.s")
+asmopt_context* opt = asmopt_create("x86-64");
+asmopt_set_target_cpu(opt, "zen3");
+asmopt_set_optimization_level(opt, 2);
+asmopt_enable_optimization(opt, "peephole");
+asmopt_set_amd_optimizations(opt, 1);
+asmopt_parse_file(opt, "input.s");
+asmopt_optimize(opt);
+char* output = asmopt_generate_assembly(opt);
+char* report = asmopt_generate_report(opt);
+free(output);
+free(report);
+asmopt_destroy(opt);
 ```
 
 ## Requirements
 
-- Python 3.9+
+- CMake 3.16+
+- C11 compiler
 
 ## Project Status
 
