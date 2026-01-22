@@ -951,6 +951,49 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
         }
     }
     
+    /* Pattern 7: or rax, 0 -> remove (identity) */
+    if (strcmp(base_mnemonic, "or") == 0 && has_two_ops) {
+        if (asmopt_is_immediate_zero(src, syntax)) {
+            asmopt_record_optimization(ctx, line_no, "or_zero", line, NULL);
+            if (!asmopt_is_blank(comment)) {
+                char* trimmed = asmopt_trim_comment(comment);
+                size_t len = strlen(indent) + strlen(trimmed) + 1;
+                char* newline = malloc(len + 1);
+                if (newline) {
+                    snprintf(newline, len + 1, "%s%s", indent, trimmed);
+                    asmopt_store_optimized_line(ctx, newline);
+                    free(newline);
+                }
+                free(trimmed);
+            }
+            *removed = true;
+            goto cleanup;
+        }
+    }
+    
+    /* Pattern 8: xor rax, 0 -> remove (identity) */
+    if (strcmp(base_mnemonic, "xor") == 0 && has_two_ops) {
+        if (asmopt_is_immediate_zero(src, syntax)) {
+            asmopt_record_optimization(ctx, line_no, "xor_zero", line, NULL);
+            if (!asmopt_is_blank(comment)) {
+                char* trimmed = asmopt_trim_comment(comment);
+                size_t len = strlen(indent) + strlen(trimmed) + 1;
+                char* newline = malloc(len + 1);
+                if (newline) {
+                    snprintf(newline, len + 1, "%s%s", indent, trimmed);
+                    asmopt_store_optimized_line(ctx, newline);
+                    free(newline);
+                }
+                free(trimmed);
+            }
+            *removed = true;
+            goto cleanup;
+        }
+    }
+    
+    /* Pattern 9: test/cmp rax, rax -> can be optimized in some cases but keep for flags */
+    /* Pattern 10: and rax, rax -> test rax, rax (if only flags are needed, but we don't have dataflow) */
+    
     /* No optimization applied, store original */
     asmopt_store_optimized_line(ctx, line);
 
