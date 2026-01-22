@@ -1053,35 +1053,26 @@ int asmopt_optimize(asmopt_context* ctx);
 // Generate output
 char* asmopt_generate_assembly(asmopt_context* ctx);
 char* asmopt_generate_report(asmopt_context* ctx);
+void asmopt_get_stats(asmopt_context* ctx, size_t* original, size_t* optimized, size_t* replacements, size_t* removals);
 
 // Cleanup
 void asmopt_destroy(asmopt_context* ctx);
+
+// Optional helpers
+char* asmopt_dump_ir_text(asmopt_context* ctx);
+char* asmopt_dump_cfg_text(asmopt_context* ctx);
+char* asmopt_dump_cfg_dot(asmopt_context* ctx);
 ```
 
-### 11.2 Python Bindings
+### 11.2 C CLI Usage
 
-```python
-import asmopt
+```bash
+# Build with CMake
+cmake -S . -B build
+cmake --build build
 
-# Create optimizer for AMD Zen 3
-opt = asmopt.Optimizer(architecture='x86-64', target_cpu='zen3')
-
-# Set options
-opt.set_optimization_level(2)
-opt.enable_optimization('peephole')
-opt.enable_amd_optimizations(True)
-
-# Load and optimize
-opt.load_file('input.s')
-opt.optimize()
-
-# Get results
-optimized_code = opt.get_assembly()
-report = opt.get_report()
-stats = opt.get_statistics()
-
-# Save
-opt.save('output.s')
+# Run optimizer
+./build/asmopt -O2 --mtune zen3 --report report.txt input.s -o output.s
 ```
 
 ## 12. Testing and Validation

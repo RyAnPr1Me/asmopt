@@ -41,21 +41,46 @@ Please refer to [SPECIFICATION.md](SPECIFICATION.md)
 - ARM/AArch64 platforms
 - RISC-V platforms
 
-## Quick Start (Planned)
+## Quick Start
 
 ```bash
+# Configure and build
+cmake -S . -B build
+cmake --build build
+
 # Basic optimization for x86-64
-asmopt input.s -o output.s
+./build/asmopt input.s -o output.s
 
 # Optimize for AMD Zen 3 with maximum optimization
-asmopt -O3 --mtune zen3 --report report.txt input.s -o output.s
-
-# Optimize for AMD Zen 4 (with AVX-512 support)
-asmopt -O3 --mtune zen4 input.s -o output.s
+./build/asmopt -O3 --mtune zen3 --report report.txt input.s -o output.s
 
 # Convert AT&T syntax to Intel syntax while optimizing
-asmopt -f intel input_att.s -o output_intel.s
+./build/asmopt -f intel input_att.s -o output_intel.s
 ```
+
+## C API
+
+```c
+#include "asmopt.h"
+
+asmopt_context* opt = asmopt_create("x86-64");
+asmopt_set_target_cpu(opt, "zen3");
+asmopt_set_optimization_level(opt, 2);
+asmopt_enable_optimization(opt, "peephole");
+asmopt_set_amd_optimizations(opt, 1);
+asmopt_parse_file(opt, "input.s");
+asmopt_optimize(opt);
+char* output = asmopt_generate_assembly(opt);
+char* report = asmopt_generate_report(opt);
+free(output);
+free(report);
+asmopt_destroy(opt);
+```
+
+## Requirements
+
+- CMake 3.16+
+- C11 compiler
 
 ## Project Status
 
