@@ -306,7 +306,12 @@ class Optimizer:
             return line, False, False
         op1, op2, pre_space, post_space = operands_info
         mnemonic_lower = mnemonic.lower()
-        if not mnemonic_lower.startswith("mov"):
+        suffix = ""
+        if mnemonic_lower == "mov":
+            suffix = ""
+        elif len(mnemonic_lower) == 4 and mnemonic_lower.startswith("mov") and mnemonic_lower[3] in "bwlq":
+            suffix = mnemonic_lower[3]
+        else:
             return line, False, False
 
         if syntax == "intel":
@@ -323,8 +328,7 @@ class Optimizer:
             return None, False, True
 
         if dest_reg and self._is_immediate_zero(src, syntax):
-            suffix = mnemonic_lower[3:]
-            xor_mnemonic = "xor" + suffix if syntax == "att" else "xor"
+            xor_mnemonic = f"xor{suffix}" if suffix else "xor"
             new_operands = f"{dest}{pre_space},{post_space}{dest}"
             comment_suffix = f" {comment.lstrip()}" if comment else ""
             new_line = f"{indent}{xor_mnemonic}{spacing}{new_operands}{comment_suffix}".rstrip()
