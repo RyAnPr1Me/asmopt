@@ -15,6 +15,13 @@ typedef struct {
 
 typedef struct {
     size_t line_no;
+    char* pattern_name;
+    char* original;
+    char* optimized;
+} asmopt_optimization_event;
+
+typedef struct {
+    size_t line_no;
     char* kind;
     char* text;
     char* mnemonic;
@@ -65,6 +72,8 @@ struct asmopt_context {
     asmopt_cfg_edge* cfg_edges;
     size_t cfg_edge_count;
     bool trailing_newline;
+    asmopt_optimization_event* opt_events;
+    size_t opt_event_count;
 };
 
 static char* asmopt_strdup(const char* value) {
@@ -563,6 +572,24 @@ static void asmopt_store_optimized_line(asmopt_context* ctx, const char* line) {
     ctx->optimized_lines[ctx->optimized_count++] = asmopt_strdup(line);
 }
 
+static void asmopt_record_optimization(asmopt_context* ctx, size_t line_no, const char* pattern, 
+                                       const char* original, const char* optimized) {
+    if (!ctx || !pattern) {
+        return;
+    }
+    asmopt_optimization_event* next = realloc(ctx->opt_events, 
+                                              sizeof(asmopt_optimization_event) * (ctx->opt_event_count + 1));
+    if (!next) {
+        return;
+    }
+    ctx->opt_events = next;
+    ctx->opt_events[ctx->opt_event_count].line_no = line_no;
+    ctx->opt_events[ctx->opt_event_count].pattern_name = asmopt_strdup(pattern);
+    ctx->opt_events[ctx->opt_event_count].original = asmopt_strdup(original ? original : "");
+    ctx->opt_events[ctx->opt_event_count].optimized = asmopt_strdup(optimized ? optimized : "(removed)");
+    ctx->opt_event_count++;
+}
+
 static bool asmopt_is_immediate_one(const char* operand, const char* syntax) {
     if (!operand) {
         return false;
@@ -659,7 +686,7 @@ static int asmopt_log2(long value) {
     return log;
 }
 
-static void asmopt_peephole_line(asmopt_context* ctx, const char* line, const char* syntax, bool* replaced, bool* removed) {
+static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char* line, const char* syntax, bool* replaced, bool* removed) {
     *replaced = false;
     *removed = false;
     char* code = NULL;
@@ -753,6 +780,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, const char* line, const ch
         bool dest_reg = asmopt_is_register(dest, syntax);
         bool src_reg = asmopt_is_register(src, syntax);
         if (dest_reg && src_reg && asmopt_casecmp(dest, src) == 0) {
+            asmopt_record_optimization(ctx, line_no, "redundant_mov", line, NULL);
             if (!asmopt_is_blank(comment)) {
                 char* trimmed = asmopt_trim_comment(comment);
                 size_t len = strlen(indent) + strlen(trimmed) + 1;
@@ -789,6 +817,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, const char* line, const ch
                     strcat(newline, " ");
                     strcat(newline, trimmed_comment);
                 }
+                asmopt_record_optimization(ctx, line_no, "mov_zero_to_xor", line, newline);
                 asmopt_store_optimized_line(ctx, newline);
                 free(newline);
                 *replaced = true;
@@ -801,6 +830,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, const char* line, const ch
     /* Pattern 3: imul/mul rax, 1 -> remove (identity) */
     if ((strcmp(base_mnemonic, "imul") == 0 || strcmp(base_mnemonic, "mul") == 0) && has_two_ops) {
         if (asmopt_is_immediate_one(src, syntax)) {
+            asmopt_record_optimization(ctx, line_no, "mul_by_one", line, NULL);
             if (!asmopt_is_blank(comment)) {
                 char* trimmed = asmopt_trim_comment(comment);
                 size_t len = strlen(indent) + strlen(trimmed) + 1;
@@ -846,6 +876,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, const char* line, const ch
                     strcat(newline, " ");
                     strcat(newline, trimmed_comment);
                 }
+                asmopt_record_optimization(ctx, line_no, "mul_power_of_2_to_shift", line, newline);
                 asmopt_store_optimized_line(ctx, newline);
                 free(newline);
                 *replaced = true;
@@ -858,6 +889,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, const char* line, const ch
     /* Pattern 5: add/sub rax, 0 -> remove (identity) */
     if ((strcmp(base_mnemonic, "add") == 0 || strcmp(base_mnemonic, "sub") == 0) && has_two_ops) {
         if (asmopt_is_immediate_zero(src, syntax)) {
+            asmopt_record_optimization(ctx, line_no, "add_sub_zero", line, NULL);
             if (!asmopt_is_blank(comment)) {
                 char* trimmed = asmopt_trim_comment(comment);
                 size_t len = strlen(indent) + strlen(trimmed) + 1;
@@ -878,6 +910,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, const char* line, const ch
     if ((strcmp(base_mnemonic, "shl") == 0 || strcmp(base_mnemonic, "shr") == 0 || 
          strcmp(base_mnemonic, "sal") == 0 || strcmp(base_mnemonic, "sar") == 0) && has_two_ops) {
         if (asmopt_is_immediate_zero(src, syntax)) {
+            asmopt_record_optimization(ctx, line_no, "shift_by_zero", line, NULL);
             if (!asmopt_is_blank(comment)) {
                 char* trimmed = asmopt_trim_comment(comment);
                 size_t len = strlen(indent) + strlen(trimmed) + 1;
@@ -1508,7 +1541,7 @@ int asmopt_optimize(asmopt_context* ctx) {
         }
         bool replaced = false;
         bool removed = false;
-        asmopt_peephole_line(ctx, ctx->original_lines[i], syntax, &replaced, &removed);
+        asmopt_peephole_line(ctx, i + 1, ctx->original_lines[i], syntax, &replaced, &removed);
         if (replaced) {
             ctx->stats.replacements += 1;
         }
@@ -1539,18 +1572,51 @@ char* asmopt_generate_report(asmopt_context* ctx) {
     if (!ctx) {
         return asmopt_strdup("");
     }
-    char buffer[256];
-    snprintf(buffer, sizeof(buffer),
+    
+    /* Calculate required buffer size */
+    size_t buffer_size = 1024;
+    for (size_t i = 0; i < ctx->opt_event_count; i++) {
+        buffer_size += strlen(ctx->opt_events[i].pattern_name) + 
+                      strlen(ctx->opt_events[i].original) + 
+                      strlen(ctx->opt_events[i].optimized) + 100;
+    }
+    
+    char* buffer = malloc(buffer_size);
+    if (!buffer) {
+        return asmopt_strdup("");
+    }
+    
+    int offset = snprintf(buffer, buffer_size,
              "Optimization Report\n"
-             "Original lines: %zu\n"
-             "Optimized lines: %zu\n"
-             "Replacements: %zu\n"
-             "Removals: %zu\n",
+             "==================\n\n"
+             "Summary:\n"
+             "  Original lines: %zu\n"
+             "  Optimized lines: %zu\n"
+             "  Replacements: %zu\n"
+             "  Removals: %zu\n",
              ctx->stats.original_lines,
              ctx->stats.optimized_lines,
              ctx->stats.replacements,
              ctx->stats.removals);
-    return asmopt_strdup(buffer);
+    
+    if (ctx->opt_event_count > 0) {
+        offset += snprintf(buffer + offset, buffer_size - offset, 
+                          "\nOptimizations Applied:\n");
+        
+        for (size_t i = 0; i < ctx->opt_event_count; i++) {
+            asmopt_optimization_event* event = &ctx->opt_events[i];
+            offset += snprintf(buffer + offset, buffer_size - offset,
+                             "  Line %zu: %s\n"
+                             "    Before: %s\n"
+                             "    After:  %s\n",
+                             event->line_no,
+                             event->pattern_name,
+                             event->original,
+                             event->optimized);
+        }
+    }
+    
+    return buffer;
 }
 
 void asmopt_get_stats(asmopt_context* ctx, size_t* original, size_t* optimized, size_t* replacements, size_t* removals) {
@@ -1591,6 +1657,12 @@ void asmopt_destroy(asmopt_context* ctx) {
         free(ctx->options[i].value);
     }
     free(ctx->options);
+    for (size_t i = 0; i < ctx->opt_event_count; i++) {
+        free(ctx->opt_events[i].pattern_name);
+        free(ctx->opt_events[i].original);
+        free(ctx->opt_events[i].optimized);
+    }
+    free(ctx->opt_events);
     asmopt_reset_lines(ctx);
     free(ctx);
 }
