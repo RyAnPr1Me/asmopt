@@ -135,9 +135,9 @@ class Optimizer:
             with open(path, "r", encoding="utf-8") as handle:
                 text = handle.read()
         except FileNotFoundError as exc:
-            raise FileNotFoundError(f"Input file not found: {path}") from exc
+            raise FileNotFoundError(f"Input file not found: {path} ({exc})") from exc
         except PermissionError as exc:
-            raise PermissionError(f"Permission denied reading: {path}") from exc
+            raise PermissionError(f"Permission denied reading: {path} ({exc})") from exc
         self.load_string(text)
 
     def load_string(self, assembly: str) -> None:
@@ -340,8 +340,20 @@ class Optimizer:
             if not op.startswith(_IMM_PREFIX):
                 return False
             op = op[len(_IMM_PREFIX):]
-        if op in {"0", "0x0"}:
-            return True
+        if not op:
+            return False
+        if op.endswith("h"):
+            hex_value = op[:-1]
+            if hex_value and all(ch in "0123456789abcdef" for ch in hex_value):
+                return int(hex_value, 16) == 0
+            return False
+        if op.startswith("0x"):
+            hex_value = op[2:]
+            if hex_value and all(ch in "0123456789abcdef" for ch in hex_value):
+                return int(hex_value, 16) == 0
+            return False
+        if op.isdigit():
+            return int(op, 10) == 0
         return False
 
     @staticmethod

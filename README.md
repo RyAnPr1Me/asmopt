@@ -71,6 +71,10 @@ print(opt.get_statistics())
 opt.save("output.s")
 ```
 
+## Requirements
+
+- Python 3.9+
+
 ## Project Status
 
 This project is in the specification phase. See [SPECIFICATION.md](SPECIFICATION.md) for the complete design document focused on AMD x86/x86-64 optimization.
