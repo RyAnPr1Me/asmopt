@@ -112,7 +112,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     input_path = args.input_file or args.input
     if not input_path and sys.stdin.isatty():
-        parser.error("input file required")
+        parser.error("input file required when stdin is a TTY")
 
     opt = Optimizer(
         architecture=args.march or "x86-64",

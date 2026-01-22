@@ -13,6 +13,43 @@ _MOV_PREFIX = "mov"
 _MOV_SUFFIXES = set("bwlq")
 _INSTRUCTION_RE = re.compile(r"(\s*)([A-Za-z][A-Za-z0-9.]*)(\s+)?(.*)?")
 _JUMP_TARGET_RE = re.compile(r"^[A-Za-z_\\.][A-Za-z0-9_\\.]*$")
+_COND_JUMPS = {
+    "jo",
+    "jno",
+    "js",
+    "jns",
+    "je",
+    "jz",
+    "jne",
+    "jnz",
+    "jb",
+    "jnae",
+    "jc",
+    "jnb",
+    "jae",
+    "jnc",
+    "jbe",
+    "jna",
+    "ja",
+    "jnbe",
+    "jl",
+    "jnge",
+    "jge",
+    "jnl",
+    "jle",
+    "jng",
+    "jg",
+    "jnle",
+    "jp",
+    "jpe",
+    "jnp",
+    "jpo",
+    "jcxz",
+    "jecxz",
+    "jrcxz",
+}
+_UNCOND_JUMPS = {"jmp", "jmpq", "jmpl", "jmpw"}
+_JUMP_MNEMONICS = _COND_JUMPS | _UNCOND_JUMPS
 
 
 @dataclass
@@ -72,7 +109,9 @@ class Optimizer:
         self._trailing_newline = False
 
     def set_optimization_level(self, level: int) -> None:
-        self.optimization_level = max(0, min(level, 4))
+        if level < 0 or level > 4:
+            raise ValueError("optimization level must be between 0 and 4")
+        self.optimization_level = level
 
     def enable_optimization(self, name: str) -> None:
         if name == "all":
@@ -112,13 +151,9 @@ class Optimizer:
         self._ir = self._build_ir(self._original_lines)
         self._cfg_blocks, self._cfg_edges = self._build_cfg(self._ir)
         if self.no_optimize or self.optimization_level == 0:
-            self._optimized_lines = list(self._original_lines)
-            self._stats = self._build_stats()
-            return self.get_assembly()
+            return self._use_original()
         if "peephole" not in self.enabled_optimizations:
-            self._optimized_lines = list(self._original_lines)
-            self._stats = self._build_stats()
-            return self.get_assembly()
+            return self._use_original()
 
         optimized: List[str] = []
         replacements = 0
@@ -165,6 +200,11 @@ class Optimizer:
         if self._stats.original_lines == 0 and self._original_lines:
             self._stats = self._build_stats()
         return self._stats.to_dict()
+
+    def _use_original(self) -> str:
+        self._optimized_lines = list(self._original_lines)
+        self._stats = self._build_stats()
+        return self.get_assembly()
 
     def save(self, path: str) -> None:
         with open(path, "w", encoding="utf-8") as handle:
@@ -225,8 +265,8 @@ class Optimizer:
         return OptimizationStats(
             original_lines=len(self._original_lines),
             optimized_lines=len(self._optimized_lines),
-            replacements=self._stats.replacements,
-            removals=self._stats.removals,
+            replacements=0,
+            removals=0,
         )
 
     def _detect_syntax(self, lines: Sequence[str]) -> str:
@@ -284,7 +324,7 @@ class Optimizer:
             return None
         if op.startswith("*"):
             return None
-        if not re.match(r"^[A-Za-z][A-Za-z0-9]*$", op):
+        if not re.match(r"^[A-Za-z][A-Za-z0-9_]*$", op):
             return None
         return op.lower()
 
@@ -427,12 +467,12 @@ class Optimizer:
     def _is_jump(self, instr: IRLine) -> bool:
         if not instr.mnemonic:
             return False
-        return instr.mnemonic.lower().startswith("j")
+        return instr.mnemonic.lower() in _JUMP_MNEMONICS
 
     def _is_conditional_jump(self, instr: IRLine) -> bool:
         if not instr.mnemonic:
             return False
-        return instr.mnemonic.lower().startswith("j") and instr.mnemonic.lower() != "jmp"
+        return instr.mnemonic.lower() in _COND_JUMPS
 
     def _is_return(self, instr: IRLine) -> bool:
         if not instr.mnemonic:
