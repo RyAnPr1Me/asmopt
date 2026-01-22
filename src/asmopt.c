@@ -563,6 +563,102 @@ static void asmopt_store_optimized_line(asmopt_context* ctx, const char* line) {
     ctx->optimized_lines[ctx->optimized_count++] = asmopt_strdup(line);
 }
 
+static bool asmopt_is_immediate_one(const char* operand, const char* syntax) {
+    if (!operand) {
+        return false;
+    }
+    const char* op = operand;
+    if (syntax && strcmp(syntax, "att") == 0) {
+        if (op[0] != '$') {
+            return false;
+        }
+        op++;
+    }
+    while (*op && isspace((unsigned char)*op)) {
+        op++;
+    }
+    if (*op == '\0') {
+        return false;
+    }
+    if (asmopt_starts_with(op, "0x")) {
+        char* end = NULL;
+        long value = strtol(op, &end, 16);
+        return end != op && *end == '\0' && value == 1;
+    }
+    if (op[strlen(op) - 1] == 'h') {
+        char buffer[64];
+        size_t len = strlen(op) - 1;
+        if (len >= sizeof(buffer)) {
+            return false;
+        }
+        memcpy(buffer, op, len);
+        buffer[len] = '\0';
+        char* end = NULL;
+        long value = strtol(buffer, &end, 16);
+        return end != buffer && *end == '\0' && value == 1;
+    }
+    char* end = NULL;
+    long value = strtol(op, &end, 10);
+    return end != op && *end == '\0' && value == 1;
+}
+
+static long asmopt_parse_immediate(const char* operand, const char* syntax, bool* success) {
+    *success = false;
+    if (!operand) {
+        return 0;
+    }
+    const char* op = operand;
+    if (syntax && strcmp(syntax, "att") == 0) {
+        if (op[0] != '$') {
+            return 0;
+        }
+        op++;
+    }
+    while (*op && isspace((unsigned char)*op)) {
+        op++;
+    }
+    if (*op == '\0') {
+        return 0;
+    }
+    char* end = NULL;
+    long value = 0;
+    if (asmopt_starts_with(op, "0x")) {
+        value = strtol(op, &end, 16);
+    } else if (op[strlen(op) - 1] == 'h') {
+        char buffer[64];
+        size_t len = strlen(op) - 1;
+        if (len >= sizeof(buffer)) {
+            return 0;
+        }
+        memcpy(buffer, op, len);
+        buffer[len] = '\0';
+        value = strtol(buffer, &end, 16);
+        if (end != buffer && *end == '\0') {
+            *success = true;
+        }
+        return value;
+    } else {
+        value = strtol(op, &end, 10);
+    }
+    if (end != op && *end == '\0') {
+        *success = true;
+    }
+    return value;
+}
+
+static bool asmopt_is_power_of_two(long value) {
+    return value > 0 && (value & (value - 1)) == 0;
+}
+
+static int asmopt_log2(long value) {
+    int log = 0;
+    while (value > 1) {
+        value >>= 1;
+        log++;
+    }
+    return log;
+}
+
 static void asmopt_peephole_line(asmopt_context* ctx, const char* line, const char* syntax, bool* replaced, bool* removed) {
     *replaced = false;
     *removed = false;
@@ -591,20 +687,8 @@ static void asmopt_peephole_line(asmopt_context* ctx, const char* line, const ch
         free(comment);
         return;
     }
-    char* op1 = NULL;
-    char* op2 = NULL;
-    char* pre_space = NULL;
-    char* post_space = NULL;
-    if (!asmopt_parse_operands(operands, &op1, &op2, &pre_space, &post_space)) {
-        asmopt_store_optimized_line(ctx, line);
-        free(code);
-        free(comment);
-        free(indent);
-        free(mnemonic);
-        free(spacing);
-        free(operands);
-        return;
-    }
+    
+    /* Convert mnemonic to lowercase for matching */
     char mnemonic_lower[32];
     size_t mlen = strlen(mnemonic);
     if (mlen >= sizeof(mnemonic_lower)) {
@@ -614,83 +698,206 @@ static void asmopt_peephole_line(asmopt_context* ctx, const char* line, const ch
         mnemonic_lower[i] = (char)tolower((unsigned char)mnemonic[i]);
     }
     mnemonic_lower[mlen] = '\0';
+    
+    /* Extract suffix for AT&T syntax (e.g., movl, movq, addl, subl) */
     char suffix = '\0';
-    if (strcmp(mnemonic_lower, "mov") == 0) {
-        suffix = '\0';
-    } else if (asmopt_starts_with(mnemonic_lower, "mov") && strlen(mnemonic_lower) == 4) {
-        char candidate = mnemonic_lower[3];
-        if (candidate == 'b' || candidate == 'w' || candidate == 'l' || candidate == 'q') {
-            suffix = candidate;
+    char base_mnemonic[32] = {0};
+    size_t mlen_actual = strlen(mnemonic_lower);
+    
+    /* Only strip suffix for known instruction families that use them */
+    const char* suffix_mnemonics[] = {"mov", "add", "sub", "xor", "and", "or", "cmp", "test", "shl", "shr", "sal", "sar"};
+    bool can_have_suffix = false;
+    for (size_t i = 0; i < sizeof(suffix_mnemonics) / sizeof(suffix_mnemonics[0]); i++) {
+        size_t base_len = strlen(suffix_mnemonics[i]);
+        if (mlen_actual == base_len + 1 && strncmp(mnemonic_lower, suffix_mnemonics[i], base_len) == 0) {
+            can_have_suffix = true;
+            break;
+        }
+    }
+    
+    if (can_have_suffix && mlen_actual >= 4) {
+        char last_char = mnemonic_lower[mlen_actual - 1];
+        if (last_char == 'b' || last_char == 'w' || last_char == 'l' || last_char == 'q') {
+            suffix = last_char;
+            strncpy(base_mnemonic, mnemonic_lower, mlen_actual - 1);
+            base_mnemonic[mlen_actual - 1] = '\0';
         } else {
-            suffix = '\0';
+            strcpy(base_mnemonic, mnemonic_lower);
         }
     } else {
-        asmopt_store_optimized_line(ctx, line);
-        free(code);
-        free(comment);
-        free(indent);
-        free(mnemonic);
-        free(spacing);
-        free(operands);
-        free(op1);
-        free(op2);
-        free(pre_space);
-        free(post_space);
-        return;
+        strcpy(base_mnemonic, mnemonic_lower);
     }
-
+    
+    /* Try to parse operands for two-operand instructions */
+    char* op1 = NULL;
+    char* op2 = NULL;
+    char* pre_space = NULL;
+    char* post_space = NULL;
+    bool has_two_ops = asmopt_parse_operands(operands, &op1, &op2, &pre_space, &post_space);
+    
+    /* Determine dest/src based on syntax */
     const char* dest = NULL;
     const char* src = NULL;
-    if (syntax && strcmp(syntax, "att") == 0) {
-        src = op1;
-        dest = op2;
-    } else {
-        dest = op1;
-        src = op2;
+    if (has_two_ops) {
+        if (syntax && strcmp(syntax, "att") == 0) {
+            src = op1;
+            dest = op2;
+        } else {
+            dest = op1;
+            src = op2;
+        }
     }
-    bool dest_reg = asmopt_is_register(dest, syntax);
-    bool src_reg = asmopt_is_register(src, syntax);
-    if (dest_reg && src_reg && asmopt_casecmp(dest, src) == 0) {
-        if (!asmopt_is_blank(comment)) {
-            char* trimmed = asmopt_trim_comment(comment);
-            size_t len = strlen(indent) + strlen(trimmed) + 1;
-            char* newline = malloc(len + 1);
+    
+    /* Pattern 1: mov rax, rax -> remove */
+    if ((strcmp(base_mnemonic, "mov") == 0 || strcmp(mnemonic_lower, "mov") == 0) && has_two_ops) {
+        bool dest_reg = asmopt_is_register(dest, syntax);
+        bool src_reg = asmopt_is_register(src, syntax);
+        if (dest_reg && src_reg && asmopt_casecmp(dest, src) == 0) {
+            if (!asmopt_is_blank(comment)) {
+                char* trimmed = asmopt_trim_comment(comment);
+                size_t len = strlen(indent) + strlen(trimmed) + 1;
+                char* newline = malloc(len + 1);
+                if (newline) {
+                    snprintf(newline, len + 1, "%s%s", indent, trimmed);
+                    asmopt_store_optimized_line(ctx, newline);
+                    free(newline);
+                }
+                free(trimmed);
+            }
+            *removed = true;
+            goto cleanup;
+        }
+        
+        /* Pattern 2: mov rax, 0 -> xor rax, rax */
+        if (dest_reg && asmopt_is_immediate_zero(src, syntax)) {
+            char xor_name[8];
+            if (suffix) {
+                snprintf(xor_name, sizeof(xor_name), "xor%c", suffix);
+            } else {
+                snprintf(xor_name, sizeof(xor_name), "xor");
+            }
+            char* trimmed_comment = asmopt_trim_comment(comment);
+            size_t new_len = strlen(indent) + strlen(xor_name) + strlen(spacing) + 
+                            strlen(dest) + strlen(pre_space) + strlen(post_space) + strlen(dest) + 2;
+            if (!asmopt_is_blank(trimmed_comment)) {
+                new_len += strlen(trimmed_comment) + 1;
+            }
+            char* newline = malloc(new_len + 1);
             if (newline) {
-                snprintf(newline, len + 1, "%s%s", indent, trimmed);
+                snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s", indent, xor_name, spacing, dest, pre_space, post_space, dest);
+                if (!asmopt_is_blank(trimmed_comment)) {
+                    strcat(newline, " ");
+                    strcat(newline, trimmed_comment);
+                }
                 asmopt_store_optimized_line(ctx, newline);
                 free(newline);
+                *replaced = true;
             }
-            free(trimmed);
+            free(trimmed_comment);
+            goto cleanup;
         }
-        *removed = true;
-    } else if (dest_reg && asmopt_is_immediate_zero(src, syntax)) {
-        char xor_name[8];
-        if (suffix) {
-            snprintf(xor_name, sizeof(xor_name), "xor%c", suffix);
-        } else {
-            snprintf(xor_name, sizeof(xor_name), "xor");
-        }
-        char* trimmed_comment = asmopt_trim_comment(comment);
-        size_t new_len = strlen(indent) + strlen(xor_name) + strlen(spacing) + strlen(dest) + strlen(pre_space) + strlen(post_space) + strlen(dest) + 2;
-        if (!asmopt_is_blank(trimmed_comment)) {
-            new_len += strlen(trimmed_comment) + 1;
-        }
-        char* newline = malloc(new_len + 1);
-        if (newline) {
-            snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s", indent, xor_name, spacing, dest, pre_space, post_space, dest);
-            if (!asmopt_is_blank(trimmed_comment)) {
-                strcat(newline, " ");
-                strcat(newline, trimmed_comment);
-            }
-            asmopt_store_optimized_line(ctx, newline);
-            free(newline);
-            *replaced = true;
-        }
-        free(trimmed_comment);
-    } else {
-        asmopt_store_optimized_line(ctx, line);
     }
+    
+    /* Pattern 3: imul/mul rax, 1 -> remove (identity) */
+    if ((strcmp(base_mnemonic, "imul") == 0 || strcmp(base_mnemonic, "mul") == 0) && has_two_ops) {
+        if (asmopt_is_immediate_one(src, syntax)) {
+            if (!asmopt_is_blank(comment)) {
+                char* trimmed = asmopt_trim_comment(comment);
+                size_t len = strlen(indent) + strlen(trimmed) + 1;
+                char* newline = malloc(len + 1);
+                if (newline) {
+                    snprintf(newline, len + 1, "%s%s", indent, trimmed);
+                    asmopt_store_optimized_line(ctx, newline);
+                    free(newline);
+                }
+                free(trimmed);
+            }
+            *removed = true;
+            goto cleanup;
+        }
+        
+        /* Pattern 4: imul rax, power_of_2 -> shl rax, log2(power_of_2) */
+        bool success = false;
+        long imm_val = asmopt_parse_immediate(src, syntax, &success);
+        if (success && asmopt_is_power_of_two(imm_val)) {
+            int shift_amount = asmopt_log2(imm_val);
+            char shl_name[8];
+            if (suffix) {
+                snprintf(shl_name, sizeof(shl_name), "shl%c", suffix);
+            } else {
+                snprintf(shl_name, sizeof(shl_name), "shl");
+            }
+            char shift_str[16];
+            if (syntax && strcmp(syntax, "att") == 0) {
+                snprintf(shift_str, sizeof(shift_str), "$%d", shift_amount);
+            } else {
+                snprintf(shift_str, sizeof(shift_str), "%d", shift_amount);
+            }
+            char* trimmed_comment = asmopt_trim_comment(comment);
+            size_t new_len = strlen(indent) + strlen(shl_name) + strlen(spacing) + 
+                            strlen(dest) + strlen(pre_space) + strlen(post_space) + strlen(shift_str) + 2;
+            if (!asmopt_is_blank(trimmed_comment)) {
+                new_len += strlen(trimmed_comment) + 1;
+            }
+            char* newline = malloc(new_len + 1);
+            if (newline) {
+                snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s", indent, shl_name, spacing, dest, pre_space, post_space, shift_str);
+                if (!asmopt_is_blank(trimmed_comment)) {
+                    strcat(newline, " ");
+                    strcat(newline, trimmed_comment);
+                }
+                asmopt_store_optimized_line(ctx, newline);
+                free(newline);
+                *replaced = true;
+            }
+            free(trimmed_comment);
+            goto cleanup;
+        }
+    }
+    
+    /* Pattern 5: add/sub rax, 0 -> remove (identity) */
+    if ((strcmp(base_mnemonic, "add") == 0 || strcmp(base_mnemonic, "sub") == 0) && has_two_ops) {
+        if (asmopt_is_immediate_zero(src, syntax)) {
+            if (!asmopt_is_blank(comment)) {
+                char* trimmed = asmopt_trim_comment(comment);
+                size_t len = strlen(indent) + strlen(trimmed) + 1;
+                char* newline = malloc(len + 1);
+                if (newline) {
+                    snprintf(newline, len + 1, "%s%s", indent, trimmed);
+                    asmopt_store_optimized_line(ctx, newline);
+                    free(newline);
+                }
+                free(trimmed);
+            }
+            *removed = true;
+            goto cleanup;
+        }
+    }
+    
+    /* Pattern 6: shl/shr rax, 0 -> remove (identity) */
+    if ((strcmp(base_mnemonic, "shl") == 0 || strcmp(base_mnemonic, "shr") == 0 || 
+         strcmp(base_mnemonic, "sal") == 0 || strcmp(base_mnemonic, "sar") == 0) && has_two_ops) {
+        if (asmopt_is_immediate_zero(src, syntax)) {
+            if (!asmopt_is_blank(comment)) {
+                char* trimmed = asmopt_trim_comment(comment);
+                size_t len = strlen(indent) + strlen(trimmed) + 1;
+                char* newline = malloc(len + 1);
+                if (newline) {
+                    snprintf(newline, len + 1, "%s%s", indent, trimmed);
+                    asmopt_store_optimized_line(ctx, newline);
+                    free(newline);
+                }
+                free(trimmed);
+            }
+            *removed = true;
+            goto cleanup;
+        }
+    }
+    
+    /* No optimization applied, store original */
+    asmopt_store_optimized_line(ctx, line);
 
+cleanup:
     free(code);
     free(comment);
     free(indent);
