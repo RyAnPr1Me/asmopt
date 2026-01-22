@@ -1,0 +1,4 @@
+/home/runner/work/asmopt/asmopt/_codeql_build_dir/CMakeFiles/asmopt_lib.dir
+/home/runner/work/asmopt/asmopt/_codeql_build_dir/CMakeFiles/asmopt.dir
+/home/runner/work/asmopt/asmopt/_codeql_build_dir/CMakeFiles/edit_cache.dir
+/home/runner/work/asmopt/asmopt/_codeql_build_dir/CMakeFiles/rebuild_cache.dir
