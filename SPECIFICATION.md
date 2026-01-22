@@ -7,12 +7,14 @@ This document specifies the design and implementation requirements for an Assemb
 
 ### 1.2 Scope
 The Assembly Optimizer aims to:
-- Parse and analyze assembly code from various architectures
+- Parse and analyze assembly code for **x86 and x86-64 architectures (AMD CPUs initially)**
 - Apply optimization techniques directly to assembly instructions
 - Preserve program semantics while improving performance
 - **Produce assembly code that matches or exceeds the quality of manually optimized assembly**
 - Output optimized assembly code that can be assembled without modification
 - Provide insight into optimization decisions through optional reporting
+
+**Initial Release Scope**: The first version focuses exclusively on x86/x86-64 assembly for AMD processors, allowing for deep optimization quality and thorough microarchitecture-specific optimizations before expanding to other platforms.
 
 ### 1.3 Quality Commitment
 The optimizer is designed with the explicit goal that its output should be **at least as good as hand-optimized assembly code**, and ideally better in many cases by:
@@ -23,11 +25,11 @@ The optimizer is designed with the explicit goal that its output should be **at 
 - Continuously improving through benchmarking against expert-written code
 
 ### 1.4 Target Users
-- Systems programmers working with hand-written assembly
-- Compiler developers testing backend optimizations
-- Developers optimizing performance-critical code sections
-- Security researchers analyzing and optimizing shellcode
-- Embedded systems developers with tight resource constraints
+- Systems programmers working with hand-written x86/x86-64 assembly
+- Compiler developers testing backend optimizations for AMD processors
+- Developers optimizing performance-critical code sections on AMD hardware
+- Security researchers analyzing and optimizing shellcode for x86-64
+- Game developers and performance engineers targeting AMD platforms
 
 ## 2. Architecture Overview
 
@@ -114,10 +116,10 @@ Contains individual optimization passes (detailed in Section 4)
 ### 3.1 Input Format
 
 #### 3.1.1 Supported Assembly Syntaxes
-- **AT&T Syntax**: Traditional Unix assembly syntax
-- **Intel Syntax**: Intel/NASM syntax
-- **ARM Assembly**: ARM UAL (Unified Assembly Language)
-- **RISC-V Assembly**: RISC-V assembly syntax
+- **AT&T Syntax**: Traditional Unix assembly syntax (used by GAS)
+- **Intel Syntax**: Intel/NASM syntax (more readable for x86/x86-64)
+
+**Note**: Initial release supports x86 and x86-64 assembly only. Both AT&T and Intel syntaxes are supported for maximum compatibility.
 
 #### 3.1.2 Input File Structure
 ```assembly
@@ -203,10 +205,22 @@ Line 234: Replaced 'mov rax, 0' with 'xor rax, rax'
   "preserve_labels": true,
   "preserve_comments": true,
   "generate_report": true,
-  "target_cpu": "generic",
-  "output_format": "same_as_input"
+  "target_cpu": "zen3",
+  "output_format": "same_as_input",
+  "amd_specific_opts": true
 }
 ```
+
+**Supported Architectures** (Initial Release):
+- `x86`: 32-bit x86
+- `x86-64`: 64-bit x86-64 (default)
+
+**Supported Target CPUs** (AMD Focus):
+- `generic`: Generic x86-64 optimizations
+- `zen`: AMD Zen microarchitecture
+- `zen2`: AMD Zen 2
+- `zen3`: AMD Zen 3 (recommended)
+- `zen4`: AMD Zen 4
 
 ## 4. Optimization Techniques
 
@@ -515,21 +529,20 @@ and rax, 7                    ; rax = rbx % 8
 #### 4.11.1 Description
 Apply optimizations based on knowledge of specific CPU microarchitectures to match or exceed manual optimization quality.
 
-#### 4.11.2 CPU-Specific Patterns
+#### 4.11.2 AMD-Specific Optimization Patterns
 
-**Intel: Macro-Fusion**
+**AMD: Macro-Fusion (Zen 2+)**
 ```assembly
 ; Before (separate compare and branch)
 cmp rax, rbx
 jl .target
 
-; After (fusible - executes as single uop on Intel)
+; After (fusible - executes as single macro-op on AMD Zen 2+)
 cmp rax, rbx
-jl .target                    ; Kept as-is to enable fusion
-; Note: Other branches might prevent fusion
+jl .target                    ; Compare-and-branch fusion
 ```
 
-**Intel: Zero Idioms**
+**AMD: Zero Idioms (All Zen)**
 ```assembly
 ; Before
 mov rax, 0
@@ -773,7 +786,9 @@ The optimizer applies transformations in multiple passes, with each pass potenti
 
 ## 8. Architecture-Specific Considerations
 
-### 8.1 x86/x86-64
+**Note**: This section focuses on x86/x86-64 architecture as this is the scope of the initial release.
+
+### 8.1 x86/x86-64 (AMD Processors)
 
 #### 8.1.1 Register Set
 - General purpose: RAX, RBX, RCX, RDX, RSI, RDI, RBP, RSP, R8-R15
@@ -793,58 +808,99 @@ The optimizer applies transformations in multiple passes, with each pass potenti
 - Port contention avoidance
 - 3-component LEA usage for complex addressing
 
-#### 8.1.4 Microarchitecture Knowledge Database
-Maintain detailed knowledge of CPU characteristics:
+#### 8.1.4 AMD Microarchitecture Knowledge Database
+Maintain detailed knowledge of AMD CPU characteristics:
 
-**Intel Microarchitectures**:
-- Sandy Bridge / Ivy Bridge
-- Haswell / Broadwell
-- Skylake / Cascade Lake
-- Ice Lake / Tiger Lake
-- Alder Lake (P-cores and E-cores)
+**AMD Microarchitectures** (Initial Release Focus):
+1. **Zen (2017)** - First generation Zen
+   - 4-wide decode, 6-wide execution
+   - 64KB L1I, 32KB L1D per core
+   - Integer scheduler: 84 entries
+   - FP scheduler: 96 entries
 
-**AMD Microarchitectures**:
-- Zen / Zen+
-- Zen 2
-- Zen 3
-- Zen 4
+2. **Zen+ (2018)** - Enhanced Zen
+   - Improved cache latencies
+   - Better memory controller
+   - Similar execution resources to Zen
 
-**For each, track**:
-- Instruction latencies and throughput
-- Execution port assignments
-- Cache sizes and latencies
+3. **Zen 2 (2019)** - Major redesign
+   - Doubled floating-point width
+   - Improved branch predictor
+   - 32MB L3 cache per CCX
+
+4. **Zen 3 (2020)** - Unified design
+   - Unified 8-core CCX
+   - 32MB shared L3 per CCX
+   - ~19% IPC improvement
+   - Improved branch prediction
+   - Better load/store unit
+
+5. **Zen 4 (2022)** - Latest generation
+   - 5-wide fetch and decode
+   - AVX-512 support
+   - Improved execution units
+   - DDR5 and PCIe 5.0 support
+
+**For each microarchitecture, track**:
+- Instruction latencies and throughput (from AMD optimization guides)
+- Execution port assignments and capabilities
+- Cache sizes, latencies, and organization
 - Branch predictor characteristics
-- Fusion capabilities
+- Fusion capabilities (macro-op, micro-op)
 - Optimal alignment preferences
+- Integer/FP execution resources
+- Load/store unit capabilities
+- SIMD capabilities (SSE, AVX, AVX2, AVX-512)
 
-### 8.2 ARM/AArch64
+### 8.2 AMD-Specific Optimization Considerations
 
-#### 8.2.1 Register Set
-- General purpose: R0-R30 (AArch64), R0-R15 (AArch32)
-- Special: SP, LR, PC
-- SIMD: V0-V31
+#### 8.2.1 AMD vs Intel Differences
+Key differences that affect optimization:
 
-#### 8.2.2 Calling Conventions
-- AAPCS (ARM Architecture Procedure Call Standard)
-- AAPCS64 for AArch64
+1. **Execution Port Mapping**
+   - AMD has different port assignments than Intel
+   - LEA instruction uses different ports (AMD: ports 0,1,2,3 vs Intel: ports 1,5)
+   - Shifts and rotates use different execution units
 
-#### 8.2.3 Special Optimizations
-- Conditional execution optimization
-- Load/store multiple optimizations
-- NEON SIMD optimizations
+2. **Macro-Fusion**
+   - AMD supports compare-and-branch fusion
+   - Different fusion rules than Intel
+   - Test-and-branch fusion on Zen 2+
 
-### 8.3 RISC-V
+3. **Cache Organization**
+   - Zen 2+: 32KB L1D per core (8-way)
+   - Zen 3: Unified L3 across 8 cores
+   - Different prefetcher behavior
 
-#### 8.3.1 Register Set
-- General purpose: x0-x31
-- Floating point: f0-f31
+4. **Branch Prediction**
+   - Different branch predictor design
+   - Return stack depth differences
+   - Indirect branch prediction characteristics
 
-#### 8.3.2 Calling Conventions
-- RISC-V calling convention
+5. **Memory Ordering**
+   - TSO (Total Store Order) like Intel
+   - But different store buffer sizes
+   - Different load-store forwarding characteristics
 
-#### 8.3.3 Special Optimizations
-- Compressed instruction selection (RVC extension)
-- Macro-op fusion
+#### 8.2.2 AMD Performance Tips
+Based on AMD Software Optimization Guides:
+
+1. **Prefer AVX2 over AVX-512** (Zen 4 has full AVX-512, earlier has none)
+2. **Align functions to 64-byte boundaries** for optimal fetch
+3. **Align hot loops to 32-byte boundaries** minimum
+4. **Avoid partial register updates** (can cause stalls)
+5. **Use TZCNT/LZCNT** instead of BSF/BSR when available
+6. **Minimize false dependencies** with XOR zeroing
+7. **Keep hot code within 32KB** for optimal L1I cache usage
+
+### 8.3 Future Architecture Support
+
+**Planned for Future Releases**:
+- Intel x86/x86-64 optimizations
+- ARM/AArch64 support
+- RISC-V support
+
+These architectures are explicitly out of scope for the initial release to ensure deep optimization quality for AMD x86/x86-64.
 
 ## 9. Error Handling and Validation
 
@@ -927,8 +983,9 @@ asmopt [options] input.s -o output.s
 
 #### 10.2.4 Architecture
 ```
--m, --march <arch>       Target architecture (x86, x86-64, arm, aarch64, riscv32, riscv64)
---mtune <cpu>            Optimize for specific CPU
+-m, --march <arch>       Target architecture (x86, x86-64) [default: x86-64]
+--mtune <cpu>            Optimize for specific AMD CPU (zen, zen2, zen3, zen4, generic)
+--amd-optimize           Enable AMD-specific optimizations [default: true]
 ```
 
 #### 10.2.5 Debugging
@@ -942,21 +999,27 @@ asmopt [options] input.s -o output.s
 ### 10.3 Examples
 
 ```bash
-# Basic optimization
+# Basic optimization for x86-64
 asmopt input.s -o output.s
 
-# Maximum optimization with report
-asmopt -O3 --report report.txt input.s -o output.s
+# Optimize for AMD Zen 3 with maximum optimization
+asmopt -O3 --mtune zen3 --report report.txt input.s -o output.s
+
+# Optimize for AMD Zen 4 (with AVX-512 support)
+asmopt -O3 --mtune zen4 input.s -o output.s
 
 # Specific optimizations only
 asmopt --disable all --enable peephole --enable dead_code input.s -o output.s
 
-# Convert between syntaxes
-asmopt -f att input_intel.s -o output_att.s
+# Convert between syntaxes (AT&T to Intel)
+asmopt -f intel input_att.s -o output_intel.s
 
 # Generate CFG visualization
 asmopt --cfg graph.dot input.s
 dot -Tpng graph.dot -o graph.png
+
+# Optimize 32-bit x86 code
+asmopt -m x86 --mtune generic input32.s -o output32.s
 ```
 
 ## 11. API and Library Interface
@@ -964,12 +1027,13 @@ dot -Tpng graph.dot -o graph.png
 ### 11.1 Core API (C/C++)
 
 ```c
-// Initialize optimizer
-asmopt_context* asmopt_create(const char* architecture);
+// Initialize optimizer for x86/x86-64
+asmopt_context* asmopt_create(const char* architecture); // "x86" or "x86-64"
 
 // Set options
 void asmopt_set_option(asmopt_context* ctx, const char* option, const char* value);
 void asmopt_set_optimization_level(asmopt_context* ctx, int level);
+void asmopt_set_target_cpu(asmopt_context* ctx, const char* cpu); // "zen3", "zen4", etc.
 
 // Parse assembly
 int asmopt_parse_file(asmopt_context* ctx, const char* filename);
@@ -991,12 +1055,13 @@ void asmopt_destroy(asmopt_context* ctx);
 ```python
 import asmopt
 
-# Create optimizer
-opt = asmopt.Optimizer(architecture='x86-64')
+# Create optimizer for AMD Zen 3
+opt = asmopt.Optimizer(architecture='x86-64', target_cpu='zen3')
 
 # Set options
 opt.set_optimization_level(2)
 opt.enable_optimization('peephole')
+opt.enable_amd_optimizations(True)
 
 # Load and optimize
 opt.load_file('input.s')
@@ -1260,40 +1325,55 @@ Allow adding support for new architectures without modifying core code.
 ## 17. Implementation Roadmap
 
 ### Phase 1: Foundation (Months 1-3)
-- [ ] Implement lexer and parser for x86-64
+- [ ] Implement lexer and parser for x86-64 (Intel and AT&T syntax)
+- [ ] Support both 32-bit x86 and 64-bit x86-64
 - [ ] Design and implement IR
 - [ ] Build basic CFG construction
 - [ ] Implement code generation
+- [ ] Load AMD optimization guides and instruction tables
 
 ### Phase 2: Basic Optimizations (Months 4-6)
-- [ ] Implement peephole optimizer
+- [ ] Implement peephole optimizer with AMD-specific patterns
 - [ ] Implement dead code elimination
 - [ ] Implement basic constant folding
-- [ ] Add test suite
+- [ ] Add test suite with AMD CPU benchmarks
+- [ ] Implement Zen/Zen+ microarchitecture profiles
 
 ### Phase 3: Advanced Analysis (Months 7-9)
 - [ ] Implement data flow analysis
 - [ ] Implement liveness analysis
 - [ ] Add use-def chains
-- [ ] Improve register allocation
+- [ ] Improve register allocation for x86-64
+- [ ] Implement Zen 2/Zen 3 microarchitecture profiles
+- [ ] Add AMD-specific instruction selection
 
 ### Phase 4: Advanced Optimizations (Months 10-12)
 - [ ] Implement loop optimizations
-- [ ] Implement instruction scheduling
+- [ ] Implement instruction scheduling for AMD pipelines
 - [ ] Add common subexpression elimination
-- [ ] Performance tuning
+- [ ] Performance tuning on AMD hardware
+- [ ] Implement Zen 4 microarchitecture profile
+- [ ] Add AVX-512 optimizations for Zen 4
 
-### Phase 5: Multi-Architecture (Months 13-15)
-- [ ] Add ARM/AArch64 support
-- [ ] Add RISC-V support
-- [ ] Generalize architecture-specific code
-- [ ] Plugin architecture
+### Phase 5: Quality & Benchmarking (Months 13-15)
+- [ ] Extensive benchmarking on AMD CPUs (Zen through Zen 4)
+- [ ] Compare against hand-optimized assembly
+- [ ] Tune heuristics for AMD CPUs
+- [ ] Performance profiling and optimization
+- [ ] Quality gates and regression testing
 
 ### Phase 6: Polish and Release (Months 16-18)
-- [ ] Documentation
+- [ ] Documentation and examples
 - [ ] API stabilization
-- [ ] Performance optimization
+- [ ] AMD-specific optimization guide
 - [ ] Public release and community building
+- [ ] Performance comparison reports
+
+### Future Phases (Post-1.0):
+- [ ] Add Intel CPU support (Phase 7)
+- [ ] Add ARM/AArch64 support (Phase 8)
+- [ ] Add RISC-V support (Phase 9)
+- [ ] Plugin architecture for custom optimizations (Phase 10)
 
 ## 18. References and Resources
 
@@ -1303,11 +1383,23 @@ Allow adding support for new architectures without modifying core code.
 - "Modern Compiler Implementation" by Appel
 - "Compilers: Principles, Techniques, and Tools" (Dragon Book) by Aho et al.
 
-### 18.2 Assembly Language References
+### 18.2 x86/x86-64 and AMD-Specific References
+
+#### 18.2.1 AMD Optimization Guides
+- **AMD64 Architecture Programmer's Manual** - Complete architecture reference
+- **Software Optimization Guide for AMD Family 17h Processors** (Zen, Zen+, Zen 2)
+- **Software Optimization Guide for AMD Family 19h Processors** (Zen 3, Zen 4)
+- **AMD Processor Programming Reference (PPR)** - Detailed microarchitecture docs
+
+#### 18.2.2 x86/x86-64 General References
 - Intel® 64 and IA-32 Architectures Software Developer Manuals
-- ARM Architecture Reference Manual
-- RISC-V Instruction Set Manual
 - System V AMD64 ABI
+- x86-64 psABI (Processor-Specific Application Binary Interface)
+
+#### 18.2.3 Performance Analysis Resources
+- **uops.info** - Instruction latency and throughput database
+- **Agner Fog's Optimization Manuals** - Comprehensive microarchitecture guides
+- **InstLatx64** - Instruction latency measurements
 
 ### 18.3 Optimization Papers
 - "A catalogue of optimizing transformations" by Allen & Cocke
@@ -1315,10 +1407,11 @@ Allow adding support for new architectures without modifying core code.
 - Various PLDI, CGO, and ASPLOS conference proceedings
 
 ### 18.4 Related Projects
-- LLVM (compiler infrastructure)
-- GCC (GNU Compiler Collection)
+- LLVM (compiler infrastructure with x86 backend)
+- GCC (GNU Compiler Collection with AMD optimizations)
+- MASM/NASM (x86 assemblers)
+- Keystone/Capstone (assembler/disassembler engines for x86)
 - Ghidra (reverse engineering tool with optimizer)
-- Keystone/Capstone (assembler/disassembler engines)
 
 ## 19. Glossary
 
@@ -1346,6 +1439,11 @@ Allow adding support for new architectures without modifying core code.
 
 ## 20. Conclusion
 
-This specification provides a comprehensive blueprint for implementing an Assembly Optimizer that can analyze and optimize assembly code across multiple architectures. The modular design, extensive optimization techniques, and well-defined interfaces ensure the system can be implemented incrementally, tested thoroughly, and extended easily.
+This specification provides a comprehensive blueprint for implementing an Assembly Optimizer focused on x86/x86-64 assembly for AMD processors. By concentrating on a single architecture family initially, the optimizer can achieve deep optimization quality that matches or exceeds manually optimized assembly code.
 
-The optimizer will benefit systems programmers, compiler developers, and anyone working with performance-critical assembly code by providing automated optimization capabilities traditionally only available during compilation of high-level languages.
+The modular design, AMD-specific optimizations, and well-defined interfaces ensure the system can be implemented incrementally, tested thoroughly against AMD hardware, and extended to other architectures in future releases.
+
+The optimizer will benefit systems programmers, game developers, and anyone working with performance-critical x86-64 assembly code on AMD platforms by providing automated optimization capabilities that leverage deep knowledge of AMD microarchitectures from Zen through Zen 4.
+
+**Initial Release Focus**: x86/x86-64 for AMD CPUs only
+**Future Releases**: Intel CPUs, ARM, RISC-V, and other architectures
