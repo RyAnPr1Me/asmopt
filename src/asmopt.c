@@ -707,6 +707,23 @@ static int asmopt_log2(long value) {
     return log;
 }
 
+static void asmopt_handle_identity_removal(asmopt_context* ctx, size_t line_no, const char* pattern_name,
+                                           const char* line, const char* comment, const char* indent, bool* removed) {
+    asmopt_record_optimization(ctx, line_no, pattern_name, line, NULL);
+    if (!asmopt_is_blank(comment)) {
+        char* trimmed = asmopt_trim_comment(comment);
+        size_t len = strlen(indent) + strlen(trimmed) + 1;
+        char* newline = malloc(len + 1);
+        if (newline) {
+            snprintf(newline, len + 1, "%s%s", indent, trimmed);
+            asmopt_store_optimized_line(ctx, newline);
+            free(newline);
+        }
+        free(trimmed);
+    }
+    *removed = true;
+}
+
 static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char* line, const char* syntax, bool* replaced, bool* removed) {
     *replaced = false;
     *removed = false;
@@ -800,19 +817,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
         bool dest_reg = asmopt_is_register(dest, syntax);
         bool src_reg = asmopt_is_register(src, syntax);
         if (dest_reg && src_reg && asmopt_casecmp(dest, src) == 0) {
-            asmopt_record_optimization(ctx, line_no, "redundant_mov", line, NULL);
-            if (!asmopt_is_blank(comment)) {
-                char* trimmed = asmopt_trim_comment(comment);
-                size_t len = strlen(indent) + strlen(trimmed) + 1;
-                char* newline = malloc(len + 1);
-                if (newline) {
-                    snprintf(newline, len + 1, "%s%s", indent, trimmed);
-                    asmopt_store_optimized_line(ctx, newline);
-                    free(newline);
-                }
-                free(trimmed);
-            }
-            *removed = true;
+            asmopt_handle_identity_removal(ctx, line_no, "redundant_mov", line, comment, indent, removed);
             goto cleanup;
         }
         
@@ -852,19 +857,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
     /* Pattern 3: imul/mul rax, 1 -> remove (identity) */
     if ((strcmp(base_mnemonic, "imul") == 0 || strcmp(base_mnemonic, "mul") == 0) && has_two_ops) {
         if (asmopt_is_immediate_one(src, syntax)) {
-            asmopt_record_optimization(ctx, line_no, "mul_by_one", line, NULL);
-            if (!asmopt_is_blank(comment)) {
-                char* trimmed = asmopt_trim_comment(comment);
-                size_t len = strlen(indent) + strlen(trimmed) + 1;
-                char* newline = malloc(len + 1);
-                if (newline) {
-                    snprintf(newline, len + 1, "%s%s", indent, trimmed);
-                    asmopt_store_optimized_line(ctx, newline);
-                    free(newline);
-                }
-                free(trimmed);
-            }
-            *removed = true;
+            asmopt_handle_identity_removal(ctx, line_no, "mul_by_one", line, comment, indent, removed);
             goto cleanup;
         }
         
@@ -913,19 +906,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
     /* Pattern 5: add/sub rax, 0 -> remove (identity) */
     if ((strcmp(base_mnemonic, "add") == 0 || strcmp(base_mnemonic, "sub") == 0) && has_two_ops) {
         if (asmopt_is_immediate_zero(src, syntax)) {
-            asmopt_record_optimization(ctx, line_no, "add_sub_zero", line, NULL);
-            if (!asmopt_is_blank(comment)) {
-                char* trimmed = asmopt_trim_comment(comment);
-                size_t len = strlen(indent) + strlen(trimmed) + 1;
-                char* newline = malloc(len + 1);
-                if (newline) {
-                    snprintf(newline, len + 1, "%s%s", indent, trimmed);
-                    asmopt_store_optimized_line(ctx, newline);
-                    free(newline);
-                }
-                free(trimmed);
-            }
-            *removed = true;
+            asmopt_handle_identity_removal(ctx, line_no, "add_sub_zero", line, comment, indent, removed);
             goto cleanup;
         }
     }
@@ -934,19 +915,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
     if ((strcmp(base_mnemonic, "shl") == 0 || strcmp(base_mnemonic, "shr") == 0 || 
          strcmp(base_mnemonic, "sal") == 0 || strcmp(base_mnemonic, "sar") == 0) && has_two_ops) {
         if (asmopt_is_immediate_zero(src, syntax)) {
-            asmopt_record_optimization(ctx, line_no, "shift_by_zero", line, NULL);
-            if (!asmopt_is_blank(comment)) {
-                char* trimmed = asmopt_trim_comment(comment);
-                size_t len = strlen(indent) + strlen(trimmed) + 1;
-                char* newline = malloc(len + 1);
-                if (newline) {
-                    snprintf(newline, len + 1, "%s%s", indent, trimmed);
-                    asmopt_store_optimized_line(ctx, newline);
-                    free(newline);
-                }
-                free(trimmed);
-            }
-            *removed = true;
+            asmopt_handle_identity_removal(ctx, line_no, "shift_by_zero", line, comment, indent, removed);
             goto cleanup;
         }
     }
@@ -954,19 +923,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
     /* Pattern 7: or rax, 0 -> remove (identity) */
     if (strcmp(base_mnemonic, "or") == 0 && has_two_ops) {
         if (asmopt_is_immediate_zero(src, syntax)) {
-            asmopt_record_optimization(ctx, line_no, "or_zero", line, NULL);
-            if (!asmopt_is_blank(comment)) {
-                char* trimmed = asmopt_trim_comment(comment);
-                size_t len = strlen(indent) + strlen(trimmed) + 1;
-                char* newline = malloc(len + 1);
-                if (newline) {
-                    snprintf(newline, len + 1, "%s%s", indent, trimmed);
-                    asmopt_store_optimized_line(ctx, newline);
-                    free(newline);
-                }
-                free(trimmed);
-            }
-            *removed = true;
+            asmopt_handle_identity_removal(ctx, line_no, "or_zero", line, comment, indent, removed);
             goto cleanup;
         }
     }
@@ -974,19 +931,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
     /* Pattern 8: xor rax, 0 -> remove (identity) */
     if (strcmp(base_mnemonic, "xor") == 0 && has_two_ops) {
         if (asmopt_is_immediate_zero(src, syntax)) {
-            asmopt_record_optimization(ctx, line_no, "xor_zero", line, NULL);
-            if (!asmopt_is_blank(comment)) {
-                char* trimmed = asmopt_trim_comment(comment);
-                size_t len = strlen(indent) + strlen(trimmed) + 1;
-                char* newline = malloc(len + 1);
-                if (newline) {
-                    snprintf(newline, len + 1, "%s%s", indent, trimmed);
-                    asmopt_store_optimized_line(ctx, newline);
-                    free(newline);
-                }
-                free(trimmed);
-            }
-            *removed = true;
+            asmopt_handle_identity_removal(ctx, line_no, "xor_zero", line, comment, indent, removed);
             goto cleanup;
         }
     }
