@@ -11,6 +11,7 @@ _COMMENT_MARKERS = (";", "#")
 _IMM_PREFIX = "$"
 _MOV_PREFIX = "mov"
 _MOV_SUFFIXES = set("bwlq")
+_MOV_WITH_SUFFIX_LEN = 4
 _INSTRUCTION_RE = re.compile(r"(\s*)([A-Za-z][A-Za-z0-9.]*)(\s+)?(.*)?")
 _JUMP_TARGET_RE = re.compile(r"^[A-Za-z_\\.][A-Za-z0-9_\\.]*$")
 _COND_JUMPS = {
@@ -110,7 +111,7 @@ class Optimizer:
 
     def set_optimization_level(self, level: int) -> None:
         if level < 0 or level > 4:
-            raise ValueError("optimization level must be between 0 and 4")
+            raise ValueError("optimization level must be between 0 and 4 (inclusive)")
         self.optimization_level = level
 
     def enable_optimization(self, name: str) -> None:
@@ -130,8 +131,13 @@ class Optimizer:
         self.amd_optimizations = enabled
 
     def load_file(self, path: str) -> None:
-        with open(path, "r", encoding="utf-8") as handle:
-            text = handle.read()
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                text = handle.read()
+        except FileNotFoundError as exc:
+            raise FileNotFoundError(f"Input file not found: {path}") from exc
+        except PermissionError as exc:
+            raise PermissionError(f"Permission denied reading: {path}") from exc
         self.load_string(text)
 
     def load_string(self, assembly: str) -> None:
@@ -362,7 +368,7 @@ class Optimizer:
         suffix = ""
         if mnemonic_lower == _MOV_PREFIX:
             suffix = ""
-        elif len(mnemonic_lower) == 4 and mnemonic_lower.startswith(_MOV_PREFIX) and mnemonic_lower[3] in _MOV_SUFFIXES:
+        elif len(mnemonic_lower) == _MOV_WITH_SUFFIX_LEN and mnemonic_lower.startswith(_MOV_PREFIX) and mnemonic_lower[3] in _MOV_SUFFIXES:
             suffix = mnemonic_lower[3]
         else:
             return line, False, False

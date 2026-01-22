@@ -44,8 +44,9 @@ def _build_parser() -> argparse.ArgumentParser:
         )
     else:
         group = parser.add_mutually_exclusive_group()
-        group.add_argument("--amd-optimize", dest="amd_optimize", action="store_true", default=True)
+        group.add_argument("--amd-optimize", dest="amd_optimize", action="store_true")
         group.add_argument("--no-amd-optimize", dest="amd_optimize", action="store_false")
+        parser.set_defaults(amd_optimize=True)
     return parser
 
 
