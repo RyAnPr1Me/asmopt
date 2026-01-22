@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define IMMEDIATE_BUFFER_SIZE 64
+
 typedef struct {
     size_t original_lines;
     size_t optimized_lines;
@@ -74,7 +76,15 @@ struct asmopt_context {
     bool trailing_newline;
     asmopt_optimization_event* opt_events;
     size_t opt_event_count;
+    size_t opt_event_capacity;
 };
+
+/* Instruction mnemonics that can have AT&T syntax suffixes (b, w, l, q) */
+static const char* const SUFFIX_MNEMONICS[] = {
+    "mov", "add", "sub", "xor", "and", "or", "cmp", "test", 
+    "shl", "shr", "sal", "sar"
+};
+static const size_t SUFFIX_MNEMONICS_COUNT = sizeof(SUFFIX_MNEMONICS) / sizeof(SUFFIX_MNEMONICS[0]);
 
 static char* asmopt_strdup(const char* value) {
     if (!value) {
@@ -577,12 +587,19 @@ static void asmopt_record_optimization(asmopt_context* ctx, size_t line_no, cons
     if (!ctx || !pattern) {
         return;
     }
-    asmopt_optimization_event* next = realloc(ctx->opt_events, 
-                                              sizeof(asmopt_optimization_event) * (ctx->opt_event_count + 1));
-    if (!next) {
-        return;
+    
+    /* Grow capacity if needed using doubling strategy */
+    if (ctx->opt_event_count >= ctx->opt_event_capacity) {
+        size_t new_capacity = ctx->opt_event_capacity == 0 ? 16 : ctx->opt_event_capacity * 2;
+        asmopt_optimization_event* next = realloc(ctx->opt_events, 
+                                                  sizeof(asmopt_optimization_event) * new_capacity);
+        if (!next) {
+            return;
+        }
+        ctx->opt_events = next;
+        ctx->opt_event_capacity = new_capacity;
     }
-    ctx->opt_events = next;
+    
     ctx->opt_events[ctx->opt_event_count].line_no = line_no;
     ctx->opt_events[ctx->opt_event_count].pattern_name = asmopt_strdup(pattern);
     ctx->opt_events[ctx->opt_event_count].original = asmopt_strdup(original ? original : "");
@@ -613,9 +630,9 @@ static bool asmopt_is_immediate_one(const char* operand, const char* syntax) {
         return end != op && *end == '\0' && value == 1;
     }
     if (op[strlen(op) - 1] == 'h') {
-        char buffer[64];
+        char buffer[IMMEDIATE_BUFFER_SIZE];
         size_t len = strlen(op) - 1;
-        if (len >= sizeof(buffer)) {
+        if (len >= IMMEDIATE_BUFFER_SIZE) {
             return false;
         }
         memcpy(buffer, op, len);
@@ -652,9 +669,9 @@ static long asmopt_parse_immediate(const char* operand, const char* syntax, bool
     if (asmopt_starts_with(op, "0x")) {
         value = strtol(op, &end, 16);
     } else if (op[strlen(op) - 1] == 'h') {
-        char buffer[64];
+        char buffer[IMMEDIATE_BUFFER_SIZE];
         size_t len = strlen(op) - 1;
-        if (len >= sizeof(buffer)) {
+        if (len >= IMMEDIATE_BUFFER_SIZE) {
             return 0;
         }
         memcpy(buffer, op, len);
@@ -732,11 +749,10 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
     size_t mlen_actual = strlen(mnemonic_lower);
     
     /* Only strip suffix for known instruction families that use them */
-    const char* suffix_mnemonics[] = {"mov", "add", "sub", "xor", "and", "or", "cmp", "test", "shl", "shr", "sal", "sar"};
     bool can_have_suffix = false;
-    for (size_t i = 0; i < sizeof(suffix_mnemonics) / sizeof(suffix_mnemonics[0]); i++) {
-        size_t base_len = strlen(suffix_mnemonics[i]);
-        if (mlen_actual == base_len + 1 && strncmp(mnemonic_lower, suffix_mnemonics[i], base_len) == 0) {
+    for (size_t i = 0; i < SUFFIX_MNEMONICS_COUNT; i++) {
+        size_t base_len = strlen(SUFFIX_MNEMONICS[i]);
+        if (mlen_actual == base_len + 1 && strncmp(mnemonic_lower, SUFFIX_MNEMONICS[i], base_len) == 0) {
             can_have_suffix = true;
             break;
         }
@@ -1586,7 +1602,7 @@ char* asmopt_generate_report(asmopt_context* ctx) {
         return asmopt_strdup("");
     }
     
-    int offset = snprintf(buffer, buffer_size,
+    int written = snprintf(buffer, buffer_size,
              "Optimization Report\n"
              "==================\n\n"
              "Summary:\n"
@@ -1599,13 +1615,24 @@ char* asmopt_generate_report(asmopt_context* ctx) {
              ctx->stats.replacements,
              ctx->stats.removals);
     
+    if (written < 0 || (size_t)written >= buffer_size) {
+        free(buffer);
+        return asmopt_strdup("Error: Report generation failed\n");
+    }
+    
+    size_t offset = (size_t)written;
+    
     if (ctx->opt_event_count > 0) {
-        offset += snprintf(buffer + offset, buffer_size - offset, 
+        written = snprintf(buffer + offset, buffer_size - offset, 
                           "\nOptimizations Applied:\n");
+        if (written < 0 || offset + (size_t)written >= buffer_size) {
+            return buffer;  /* Return what we have so far */
+        }
+        offset += (size_t)written;
         
         for (size_t i = 0; i < ctx->opt_event_count; i++) {
             asmopt_optimization_event* event = &ctx->opt_events[i];
-            offset += snprintf(buffer + offset, buffer_size - offset,
+            written = snprintf(buffer + offset, buffer_size - offset,
                              "  Line %zu: %s\n"
                              "    Before: %s\n"
                              "    After:  %s\n",
@@ -1613,6 +1640,10 @@ char* asmopt_generate_report(asmopt_context* ctx) {
                              event->pattern_name,
                              event->original,
                              event->optimized);
+            if (written < 0 || offset + (size_t)written >= buffer_size) {
+                return buffer;  /* Return what we have so far */
+            }
+            offset += (size_t)written;
         }
     }
     
