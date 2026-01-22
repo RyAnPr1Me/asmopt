@@ -222,10 +222,8 @@ static int test_large_input() {
     TEST_ASSERT(large_input != NULL, "Failed to allocate memory");
     
     char* ptr = large_input;
-    int line_count = 0;
     for (int i = 0; i < 1000; i++) {
         ptr += sprintf(ptr, "mov rax, rax\nmov rbx, 0\nadd rcx, 0\n");
-        line_count += 3;
     }
     
     asmopt_parse_string(ctx, large_input);
