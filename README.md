@@ -41,20 +41,34 @@ Please refer to [SPECIFICATION.md](SPECIFICATION.md)
 - ARM/AArch64 platforms
 - RISC-V platforms
 
-## Quick Start (Planned)
+## Quick Start
 
 ```bash
 # Basic optimization for x86-64
-asmopt input.s -o output.s
+python -m asmopt input.s -o output.s
 
 # Optimize for AMD Zen 3 with maximum optimization
-asmopt -O3 --mtune zen3 --report report.txt input.s -o output.s
-
-# Optimize for AMD Zen 4 (with AVX-512 support)
-asmopt -O3 --mtune zen4 input.s -o output.s
+python -m asmopt -O3 --mtune zen3 --report report.txt input.s -o output.s
 
 # Convert AT&T syntax to Intel syntax while optimizing
-asmopt -f intel input_att.s -o output_intel.s
+python -m asmopt -f intel input_att.s -o output_intel.s
+```
+
+## Python API
+
+```python
+import asmopt
+
+opt = asmopt.Optimizer(architecture="x86-64", target_cpu="zen3")
+opt.set_optimization_level(2)
+opt.enable_optimization("peephole")
+opt.enable_amd_optimizations(True)
+opt.load_file("input.s")
+opt.optimize()
+print(opt.get_assembly())
+print(opt.get_report())
+print(opt.get_statistics())
+opt.save("output.s")
 ```
 
 ## Project Status
