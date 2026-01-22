@@ -215,7 +215,7 @@ class Optimizer:
                 operands = ", ".join(instr.operands)
                 label_lines.append(f"{instr.mnemonic} {operands}".rstrip())
             label = "\\l".join(label_lines) + "\\l"
-            lines.append(f"  {block.name} [label=\"{label}\"]; ")
+            lines.append(f"  {block.name} [label=\"{label}\"];")
         for source, target in edges:
             lines.append(f"  {source} -> {target};")
         lines.append("}")
@@ -293,18 +293,18 @@ class Optimizer:
         if syntax == "att":
             if not op.startswith(_IMM_PREFIX):
                 return False
-            op = op[len(_IMM_PREFIX) :]
+            op = op[len(_IMM_PREFIX):]
         if op in {"0", "0x0"}:
             return True
         return False
 
     @staticmethod
     def _trailing_space(text: str) -> str:
-        return text[len(text.rstrip()) :]
+        return text[len(text.rstrip()):]
 
     @staticmethod
     def _leading_space(text: str) -> str:
-        return text[: len(text) - len(text.lstrip())]
+        return text[:len(text) - len(text.lstrip())]
 
     def _peephole_line(self, line: str, syntax: str) -> Tuple[Optional[str], bool, bool]:
         code, comment = self._split_comment(line)
