@@ -1358,27 +1358,27 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
             size_t next_index = line_no; /* line_no is 1-based; next line lives at this index */
             if (next_index < ctx->original_count) {
                 const char* next_line = ctx->original_lines[next_index];
-            char* next_code = NULL;
-            char* next_comment = NULL;
-            asmopt_split_comment(next_line, &next_code, &next_comment);
-            if (next_code && !asmopt_is_blank(next_code)) {
-                char* next_trimmed = asmopt_strip(next_code);
-                if (next_trimmed) {
-                    size_t len = strlen(next_trimmed);
-                    if (len > 0 && next_trimmed[len - 1] == ':') {
-                        next_trimmed[len - 1] = '\0';
-                        if (strcmp(next_trimmed, trimmed) == 0) {
-                            asmopt_handle_identity_removal(ctx, line_no, "fallthrough_jump", line, comment, indent, removed);
-                            free(next_trimmed);
-                            free(next_code);
-                            free(next_comment);
-                            free(trimmed);
-                            goto cleanup;
+                char* next_code = NULL;
+                char* next_comment = NULL;
+                asmopt_split_comment(next_line, &next_code, &next_comment);
+                if (next_code && !asmopt_is_blank(next_code)) {
+                    char* next_trimmed = asmopt_strip(next_code);
+                    if (next_trimmed) {
+                        size_t len = strlen(next_trimmed);
+                        if (len > 0 && next_trimmed[len - 1] == ':') {
+                            next_trimmed[len - 1] = '\0';
+                            if (strcmp(next_trimmed, trimmed) == 0) {
+                                asmopt_handle_identity_removal(ctx, line_no, "fallthrough_jump", line, comment, indent, removed);
+                                free(next_trimmed);
+                                free(next_code);
+                                free(next_comment);
+                                free(trimmed);
+                                goto cleanup;
+                            }
                         }
+                        free(next_trimmed);
                     }
-                    free(next_trimmed);
                 }
-            }
                 free(next_code);
                 free(next_comment);
             }
