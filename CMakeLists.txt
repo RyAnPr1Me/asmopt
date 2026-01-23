@@ -30,3 +30,10 @@ add_executable(test_integration
 )
 target_link_libraries(test_integration asmopt_lib)
 add_test(NAME IntegrationTests COMMAND test_integration)
+
+# Comprehensive API and edge case tests
+add_executable(test_comprehensive
+    tests/test_comprehensive.c
+)
+target_link_libraries(test_comprehensive asmopt_lib)
+add_test(NAME ComprehensiveTests COMMAND test_comprehensive)
