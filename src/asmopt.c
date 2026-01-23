@@ -34,6 +34,7 @@
 #include <string.h>
 
 #define IMMEDIATE_BUFFER_SIZE 64
+#define HOT_LOOP_ALIGNMENT 64
 
 typedef struct {
     size_t original_lines;
@@ -104,6 +105,7 @@ struct asmopt_context {
     asmopt_optimization_event* opt_events;
     size_t opt_event_count;
     size_t opt_event_capacity;
+    /* Flag to enable hot loop alignment when hot_align option is set */
     bool insert_hot_align;
 };
 
@@ -862,8 +864,12 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
         char* trimmed = asmopt_strip(code);
         if (trimmed) {
             if (ctx->insert_hot_align && strcmp(trimmed, ".hot_loop:") == 0) {
-                asmopt_store_optimized_line(ctx, "    .align 64");
-                asmopt_record_optimization(ctx, line_no, "hot_loop_align", line, "    .align 64\n.hot_loop:");
+                char align_line[32];
+                snprintf(align_line, sizeof(align_line), "    .align %d", HOT_LOOP_ALIGNMENT);
+                asmopt_store_optimized_line(ctx, align_line);
+                char align_report[64];
+                snprintf(align_report, sizeof(align_report), "    .align %d\n.hot_loop:", HOT_LOOP_ALIGNMENT);
+                asmopt_record_optimization(ctx, line_no, "hot_loop_align", line, align_report);
                 *replaced = true;
             }
             free(trimmed);
