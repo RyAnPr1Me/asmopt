@@ -32,9 +32,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "../tests/test_constants.h"
 
 #define IMMEDIATE_BUFFER_SIZE 64
-#define HOT_LOOP_ALIGNMENT 64
 
 typedef struct {
     size_t original_lines;

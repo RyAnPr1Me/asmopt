@@ -98,7 +98,7 @@ static int test_complete_function() {
     
     size_t original, optimized, replacements, removals;
     asmopt_get_stats(ctx, &original, &optimized, &replacements, &removals);
-    /* Replacements unchanged: hot loop alignment is an insertion. */
+    /* 13 replacements: hot loop alignment is treated as insertion (no replacement count). */
     TEST_ASSERT(replacements == 13, "Expected 13 replacements");
     /* 9 removals: redundant mov, imul-by-1, add/sub zero, shift zero, or zero, xor zero,
        and -1, fallthrough jump */

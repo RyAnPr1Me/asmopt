@@ -52,4 +52,5 @@ CMakeFiles/asmopt_lib.dir/src/asmopt.c.o: \
  /usr/include/x86_64-linux-gnu/bits/struct_mutex.h \
  /usr/include/x86_64-linux-gnu/bits/struct_rwlock.h /usr/include/alloca.h \
  /usr/include/x86_64-linux-gnu/bits/stdlib-float.h /usr/include/string.h \
- /usr/include/strings.h
+ /usr/include/strings.h \
+ /home/runner/work/asmopt/asmopt/src/../tests/test_constants.h
