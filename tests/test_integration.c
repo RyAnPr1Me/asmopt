@@ -39,8 +39,10 @@ static int test_complete_function() {
         "    and r10, -1      ; identity\n"
         "    add r11, 1       ; should become inc\n"
         "    sub r12, 1       ; should become dec\n"
-        "    xor r13, r13     ; zero idiom - keep\n"
-        "    mov r14, 42      ; keep\n"
+        "    mov r13, r14     ; swap 1\n"
+        "    mov r14, r13     ; swap 2\n"
+        "    xor r15, r15     ; zero idiom - keep\n"
+        "    mov rbx, 42      ; keep\n"
         "    ret\n";
     
     asmopt_parse_string(ctx, input);
@@ -66,16 +68,17 @@ static int test_complete_function() {
     TEST_ASSERT(strstr(output, "and r10, -1") == NULL, "AND -1 not removed");
     TEST_ASSERT(strstr(output, "inc r11") != NULL, "add 1 not converted to inc");
     TEST_ASSERT(strstr(output, "dec r12") != NULL, "sub 1 not converted to dec");
+    TEST_ASSERT(strstr(output, "xchg r13, r14") != NULL, "Swap moves not converted");
     
     /* Verify non-optimizable kept */
-    TEST_ASSERT(strstr(output, "xor r13, r13") != NULL, "Zero idiom removed");
-    TEST_ASSERT(strstr(output, "mov r14, 42") != NULL, "Valid mov removed");
+    TEST_ASSERT(strstr(output, "xor r15, r15") != NULL, "Zero idiom removed");
+    TEST_ASSERT(strstr(output, "mov rbx, 42") != NULL, "Valid mov removed");
     TEST_ASSERT(strstr(output, "ret") != NULL, "Return removed");
     
     size_t original, optimized, replacements, removals;
     asmopt_get_stats(ctx, &original, &optimized, &replacements, &removals);
-    TEST_ASSERT(replacements == 4, "Expected 4 replacements"); /* mov 0 -> xor, imul 16 -> shl, add 1 -> inc, sub 1 -> dec */
-    TEST_ASSERT(removals == 7, "Expected 7 removals");
+    TEST_ASSERT(replacements == 5, "Expected 5 replacements");
+    TEST_ASSERT(removals == 8, "Expected 8 removals");
     
     free(output);
     asmopt_destroy(ctx);
@@ -293,7 +296,9 @@ static int test_comprehensive_report() {
         "xor r9, 0\n"       /* Pattern 8 */
         "and r10, -1\n"     /* Pattern 9 */
         "add r11, 1\n"      /* Pattern 10 */
-        "sub r12, 1\n";     /* Pattern 11 */
+        "sub r12, 1\n"      /* Pattern 11 */
+        "mov r13, r14\n"    /* Pattern 12 */
+        "mov r14, r13\n";   /* Pattern 12 */
     
     asmopt_parse_string(ctx, input);
     asmopt_optimize(ctx);
@@ -313,9 +318,10 @@ static int test_comprehensive_report() {
     TEST_ASSERT(strstr(report, "and_minus_one") != NULL, "Pattern 9 missing");
     TEST_ASSERT(strstr(report, "add_one_to_inc") != NULL, "Pattern 10 missing");
     TEST_ASSERT(strstr(report, "sub_one_to_dec") != NULL, "Pattern 11 missing");
+    TEST_ASSERT(strstr(report, "swap_moves_to_xchg") != NULL, "Pattern 12 missing");
     
-    TEST_ASSERT(strstr(report, "Replacements: 4") != NULL, "Wrong replacement count");
-    TEST_ASSERT(strstr(report, "Removals: 7") != NULL, "Wrong removal count");
+    TEST_ASSERT(strstr(report, "Replacements: 5") != NULL, "Wrong replacement count");
+    TEST_ASSERT(strstr(report, "Removals: 8") != NULL, "Wrong removal count");
     
     free(report);
     asmopt_destroy(ctx);

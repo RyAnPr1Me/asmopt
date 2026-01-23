@@ -463,6 +463,28 @@ static int test_all_powers_of_2() {
     TEST_PASS("test_all_powers_of_2");
 }
 
+/* Test swap move optimization */
+static int test_swap_move_optimization() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input =
+        "mov rax, rbx\n"
+        "mov rbx, rax\n";
+    
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "xchg rax, rbx") != NULL, "Swap moves not converted");
+    TEST_ASSERT(strstr(output, "mov rbx, rax") == NULL, "Second mov not removed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_swap_move_optimization");
+}
+
 int main() {
     int passed = 0;
     int total = 0;
@@ -491,6 +513,7 @@ int main() {
     total++; passed += test_hex_immediates();
     total++; passed += test_memory_operands();
     total++; passed += test_all_powers_of_2();
+    total++; passed += test_swap_move_optimization();
     
     printf("\n========================================\n");
     printf("Test Results: %d/%d tests passed\n", passed, total);
