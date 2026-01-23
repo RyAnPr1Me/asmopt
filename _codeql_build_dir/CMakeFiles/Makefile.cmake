@@ -51,4 +51,5 @@ set(CMAKE_DEPEND_INFO_FILES
   "CMakeFiles/asmopt.dir/DependInfo.cmake"
   "CMakeFiles/test_peephole.dir/DependInfo.cmake"
   "CMakeFiles/test_integration.dir/DependInfo.cmake"
+  "CMakeFiles/test_comprehensive.dir/DependInfo.cmake"
   )
