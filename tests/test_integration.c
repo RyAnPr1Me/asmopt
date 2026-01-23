@@ -42,6 +42,8 @@ static int test_complete_function() {
         "    sub r12, 1       ; should become dec\n"
         "    cmp rsi, 0       ; zero compare\n"
         "    or rdi, rdi      ; flag-only\n"
+        "    add r8, -1       ; negative add\n"
+        "    sub r9, -1       ; negative sub\n"
         "    mov r13, r14     ; swap 1\n"
         "    mov r14, r13     ; swap 2\n"
         "    sub rax, rax     ; zero idiom\n"
@@ -73,6 +75,8 @@ static int test_complete_function() {
     TEST_ASSERT(strstr(output, "xor rax, rax") != NULL, "sub self not converted to xor");
     TEST_ASSERT(strstr(output, "test rsi, rsi") != NULL, "cmp zero not converted to test");
     TEST_ASSERT(strstr(output, "test rdi, rdi") != NULL, "or self not converted to test");
+    TEST_ASSERT(strstr(output, "dec r8") != NULL, "add -1 not converted to dec");
+    TEST_ASSERT(strstr(output, "inc r9") != NULL, "sub -1 not converted to inc");
     TEST_ASSERT(strstr(output, "inc r11") != NULL, "add 1 not converted to inc");
     TEST_ASSERT(strstr(output, "dec r12") != NULL, "sub 1 not converted to dec");
     TEST_ASSERT(strstr(output, "mov r13, r14") != NULL, "Swap move not preserved");
@@ -84,7 +88,7 @@ static int test_complete_function() {
     
     size_t original, optimized, replacements, removals;
     asmopt_get_stats(ctx, &original, &optimized, &replacements, &removals);
-    TEST_ASSERT(replacements == 9, "Expected 9 replacements");
+    TEST_ASSERT(replacements == 11, "Expected 11 replacements");
     TEST_ASSERT(removals == 8, "Expected 8 removals");
     
     free(output);
@@ -309,7 +313,9 @@ static int test_comprehensive_report() {
         "sub r15, r15\n"    /* Pattern 13 */
         "and rax, 0\n"      /* Pattern 14 */
         "cmp rbx, 0\n"      /* Pattern 15 */
-        "or rcx, rcx\n";    /* Pattern 16 */
+        "or rcx, rcx\n"     /* Pattern 16 */
+        "add rdx, -1\n"     /* Pattern 17 */
+        "sub rsi, -1\n";    /* Pattern 18 */
     
     asmopt_parse_string(ctx, input);
     asmopt_optimize(ctx);
@@ -334,8 +340,10 @@ static int test_comprehensive_report() {
     TEST_ASSERT(strstr(report, "and_zero_to_xor") != NULL, "Pattern 14 missing");
     TEST_ASSERT(strstr(report, "cmp_zero_to_test") != NULL, "Pattern 15 missing");
     TEST_ASSERT(strstr(report, "or_self_to_test") != NULL, "Pattern 16 missing");
+    TEST_ASSERT(strstr(report, "add_minus_one_to_dec") != NULL, "Pattern 17 missing");
+    TEST_ASSERT(strstr(report, "sub_minus_one_to_inc") != NULL, "Pattern 18 missing");
     
-    TEST_ASSERT(strstr(report, "Replacements: 9") != NULL, "Wrong replacement count");
+    TEST_ASSERT(strstr(report, "Replacements: 11") != NULL, "Wrong replacement count");
     TEST_ASSERT(strstr(report, "Removals: 8") != NULL, "Wrong removal count");
     
     free(report);

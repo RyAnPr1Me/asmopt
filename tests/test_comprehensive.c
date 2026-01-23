@@ -573,6 +573,50 @@ static int test_or_self_optimization() {
     TEST_PASS("test_or_self_optimization");
 }
 
+/* Test add -1 optimization */
+static int test_add_minus_one_optimization() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input =
+        "add rax, -1\n"
+        "add rbx, 4\n";
+    
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "dec rax") != NULL, "add -1 not converted to dec");
+    TEST_ASSERT(strstr(output, "add rbx, 4") != NULL, "Non -1 add was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_add_minus_one_optimization");
+}
+
+/* Test sub -1 optimization */
+static int test_sub_minus_one_optimization() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input =
+        "sub rax, -1\n"
+        "sub rbx, 6\n";
+    
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "inc rax") != NULL, "sub -1 not converted to inc");
+    TEST_ASSERT(strstr(output, "sub rbx, 6") != NULL, "Non -1 sub was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_sub_minus_one_optimization");
+}
+
 int main() {
     int passed = 0;
     int total = 0;
@@ -606,6 +650,8 @@ int main() {
     total++; passed += test_and_zero_optimization();
     total++; passed += test_cmp_zero_optimization();
     total++; passed += test_or_self_optimization();
+    total++; passed += test_add_minus_one_optimization();
+    total++; passed += test_sub_minus_one_optimization();
     
     printf("\n========================================\n");
     printf("Test Results: %d/%d tests passed\n", passed, total);
