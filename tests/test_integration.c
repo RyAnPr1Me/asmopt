@@ -46,6 +46,8 @@ static int test_complete_function() {
         "    sub r9, -1       ; negative sub\n"
         "    and rdx, rdx     ; flag-only\n"
         "    cmp rcx, rcx     ; self-compare\n"
+        "    jmp .fallthrough\n"
+        ".fallthrough:\n"
         "    mov r13, r14     ; swap 1\n"
         "    mov r14, r13     ; swap 2\n"
         "    sub rax, rax     ; zero idiom\n"
@@ -81,6 +83,7 @@ static int test_complete_function() {
     TEST_ASSERT(strstr(output, "inc r9") != NULL, "sub -1 not converted to inc");
     TEST_ASSERT(strstr(output, "test rdx, rdx") != NULL, "and self not converted to test");
     TEST_ASSERT(strstr(output, "test rcx, rcx") != NULL, "cmp self not converted to test");
+    TEST_ASSERT(strstr(output, "jmp .fallthrough") == NULL, "Fallthrough jump not removed");
     TEST_ASSERT(strstr(output, "inc r11") != NULL, "add 1 not converted to inc");
     TEST_ASSERT(strstr(output, "dec r12") != NULL, "sub 1 not converted to dec");
     TEST_ASSERT(strstr(output, "mov r13, r14") != NULL, "Swap move not preserved");
@@ -96,7 +99,7 @@ static int test_complete_function() {
        add-1/dec, sub-1/inc, and-self/test, cmp-self/test, and_zero/xor, sub-self/xor,
        redundant move keep */
     TEST_ASSERT(replacements == 13, "Expected 13 replacements");
-    TEST_ASSERT(removals == 8, "Expected 8 removals");
+    TEST_ASSERT(removals == 9, "Expected 9 removals");
     
     free(output);
     asmopt_destroy(ctx);
@@ -324,7 +327,9 @@ static int test_comprehensive_report() {
         "add rdx, -1\n"     /* Pattern 17 */
         "sub rsi, -1\n"     /* Pattern 18 */
         "and r8, r8\n"      /* Pattern 19 */
-        "cmp r9, r9\n";     /* Pattern 20 */
+        "cmp r9, r9\n"      /* Pattern 20 */
+        "jmp .fall\n"
+        ".fall:\n";         /* Pattern 21 */
     
     asmopt_parse_string(ctx, input);
     asmopt_optimize(ctx);
@@ -353,10 +358,11 @@ static int test_comprehensive_report() {
     TEST_ASSERT(strstr(report, "sub_minus_one_to_inc") != NULL, "Pattern 18 missing");
     TEST_ASSERT(strstr(report, "and_self_to_test") != NULL, "Pattern 19 missing");
     TEST_ASSERT(strstr(report, "cmp_self_to_test") != NULL, "Pattern 20 missing");
+    TEST_ASSERT(strstr(report, "fallthrough_jump") != NULL, "Pattern 21 missing");
     
     /* 13 replacements correspond to the same list in test_complete_function above. */
     TEST_ASSERT(strstr(report, "Replacements: 13") != NULL, "Wrong replacement count");
-    TEST_ASSERT(strstr(report, "Removals: 8") != NULL, "Wrong removal count");
+    TEST_ASSERT(strstr(report, "Removals: 9") != NULL, "Wrong removal count");
     
     free(report);
     asmopt_destroy(ctx);

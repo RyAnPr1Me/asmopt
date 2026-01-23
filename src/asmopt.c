@@ -768,6 +768,8 @@ static int asmopt_log2(long value) {
     return log;
 }
 
+static bool asmopt_is_unconditional_jump(const char* mnemonic);
+
 static void asmopt_handle_identity_removal(asmopt_context* ctx, size_t line_no, const char* pattern_name,
                                            const char* line, const char* comment, const char* indent, bool* removed) {
     asmopt_record_optimization(ctx, line_no, pattern_name, line, NULL);
@@ -789,8 +791,8 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
     /*
      * Peephole Optimizer - Pattern Matching Engine
      * 
-     * This function implements 20 peephole optimization patterns for x86-64 assembly:
-     * (7 identity + 1 redundant move + 12 replacements: 2,4,10,11,13-20)
+     * This function implements 21 optimization patterns for x86-64 assembly:
+     * (7 identity + 1 redundant move + 12 replacements: 2,4,10,11,13-20 + 1 control-flow)
      * 
      * Identity/No-op Eliminations (7 patterns):
      *   Pattern 1: mov rax, rax            → (removed)        - Redundant self-move
@@ -817,6 +819,9 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
      *   Pattern 18: sub rax, -1            → inc rax          - Negative sub
      *   Pattern 19: and rax, rax           → test rax, rax    - Flag-only
      *   Pattern 20: cmp rax, rax           → test rax, rax    - Self-compare
+     * 
+     * Control-flow (1 pattern):
+     *   Pattern 21: jmp next_label         → (removed)        - Fallthrough jump
      * 
      * Note: inc/dec create false dependencies on flags register (Pentium 4+), so patterns
      * 10-11 optimize for size. Future: make configurable (-Os vs -O3).
@@ -1343,6 +1348,38 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
         }
     }
 
+    /* Pattern 21: jmp <next label> -> remove (fallthrough) */
+    if (!has_two_ops && asmopt_is_unconditional_jump(base_mnemonic)) {
+        char* trimmed = operands ? asmopt_strip(operands) : asmopt_strdup("");
+        if (trimmed && *trimmed && line_no < ctx->original_count) {
+            const char* next_line = ctx->original_lines[line_no];
+            char* next_code = NULL;
+            char* next_comment = NULL;
+            asmopt_split_comment(next_line, &next_code, &next_comment);
+            if (next_code && !asmopt_is_blank(next_code)) {
+                char* next_trimmed = asmopt_strip(next_code);
+                if (next_trimmed) {
+                    size_t len = strlen(next_trimmed);
+                    if (len > 0 && next_trimmed[len - 1] == ':') {
+                        next_trimmed[len - 1] = '\0';
+                        if (strcmp(next_trimmed, trimmed) == 0) {
+                            asmopt_handle_identity_removal(ctx, line_no, "fallthrough_jump", line, comment, indent, removed);
+                            free(next_trimmed);
+                            free(next_code);
+                            free(next_comment);
+                            free(trimmed);
+                            goto cleanup;
+                        }
+                    }
+                    free(next_trimmed);
+                }
+            }
+            free(next_code);
+            free(next_comment);
+        }
+        free(trimmed);
+    }
+
     /* Pattern 3: imul/mul rax, 1 -> remove (identity) */
     if ((strcmp(base_mnemonic, "imul") == 0 || strcmp(base_mnemonic, "mul") == 0) && has_two_ops) {
         if (dest_reg && asmopt_is_immediate_one(src, syntax)) {
@@ -1513,6 +1550,20 @@ cleanup:
     free(op2);
     free(pre_space);
     free(post_space);
+}
+
+static bool asmopt_is_unconditional_jump(const char* mnemonic) {
+    if (!mnemonic) {
+        return false;
+    }
+    const char* jumps[] = { "jmp", "jmpq", "jmpl", "jmpw" };
+    size_t count = sizeof(jumps) / sizeof(jumps[0]);
+    for (size_t i = 0; i < count; i++) {
+        if (asmopt_casecmp(mnemonic, jumps[i]) == 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static bool asmopt_is_jump_mnemonic(const char* mnemonic) {

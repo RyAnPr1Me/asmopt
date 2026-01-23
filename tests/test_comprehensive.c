@@ -661,6 +661,29 @@ static int test_cmp_self_optimization() {
     TEST_PASS("test_cmp_self_optimization");
 }
 
+/* Test fallthrough jump optimization */
+static int test_fallthrough_jump_optimization() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input =
+        "jmp .target\n"
+        ".target:\n"
+        "mov rax, 0\n";
+    
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "jmp .target") == NULL, "Fallthrough jump not removed");
+    TEST_ASSERT(strstr(output, ".target:") != NULL, "Target label removed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_fallthrough_jump_optimization");
+}
+
 int main() {
     int passed = 0;
     int total = 0;
@@ -698,6 +721,7 @@ int main() {
     total++; passed += test_sub_minus_one_optimization();
     total++; passed += test_and_self_optimization();
     total++; passed += test_cmp_self_optimization();
+    total++; passed += test_fallthrough_jump_optimization();
     
     printf("\n========================================\n");
     printf("Test Results: %d/%d tests passed\n", passed, total);
