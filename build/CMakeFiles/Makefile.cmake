@@ -114,4 +114,7 @@ set(CMAKE_MAKEFILE_PRODUCTS
 set(CMAKE_DEPEND_INFO_FILES
   "CMakeFiles/asmopt_lib.dir/DependInfo.cmake"
   "CMakeFiles/asmopt.dir/DependInfo.cmake"
+  "CMakeFiles/test_peephole.dir/DependInfo.cmake"
+  "CMakeFiles/test_integration.dir/DependInfo.cmake"
+  "CMakeFiles/test_comprehensive.dir/DependInfo.cmake"
   )

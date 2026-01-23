@@ -1,0 +1,2 @@
+/usr/bin/ar qc libasmopt_lib.a CMakeFiles/asmopt_lib.dir/src/asmopt.c.o
+/usr/bin/ranlib libasmopt_lib.a

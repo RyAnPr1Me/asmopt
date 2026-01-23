@@ -31,6 +31,9 @@ default_target: all
 
 .SUFFIXES: .hpux_make_needs_suffix_list
 
+# Produce verbose output by default.
+VERBOSE = 1
+
 # Command-line flag to silence nested $(MAKE).
 $(VERBOSE)MAKESILENT = -s
 
@@ -60,7 +63,7 @@ EQUALS = =
 CMAKE_SOURCE_DIR = /home/runner/work/asmopt/asmopt
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/runner/work/asmopt/asmopt/build
+CMAKE_BINARY_DIR = /home/runner/work/asmopt/asmopt/_codeql_build_dir
 
 #=============================================================================
 # Targets provided globally by CMake.
@@ -97,9 +100,9 @@ rebuild_cache/fast: rebuild_cache
 
 # The main all target
 all: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/runner/work/asmopt/asmopt/build/CMakeFiles /home/runner/work/asmopt/asmopt/build//CMakeFiles/progress.marks
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/runner/work/asmopt/asmopt/_codeql_build_dir/CMakeFiles /home/runner/work/asmopt/asmopt/_codeql_build_dir//CMakeFiles/progress.marks
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/runner/work/asmopt/asmopt/build/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/runner/work/asmopt/asmopt/_codeql_build_dir/CMakeFiles 0
 .PHONY : all
 
 # The main clean target
@@ -178,19 +181,6 @@ test_integration/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_integration.dir/build.make CMakeFiles/test_integration.dir/build
 .PHONY : test_integration/fast
 
-#=============================================================================
-# Target rules for targets named test_comprehensive
-
-# Build rule for target.
-test_comprehensive: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_comprehensive
-.PHONY : test_comprehensive
-
-# fast build rule for target.
-test_comprehensive/fast:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_comprehensive.dir/build.make CMakeFiles/test_comprehensive.dir/build
-.PHONY : test_comprehensive/fast
-
 src/asmopt.o: src/asmopt.c.o
 .PHONY : src/asmopt.o
 
@@ -238,30 +228,6 @@ src/main.s: src/main.c.s
 src/main.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/asmopt.dir/build.make CMakeFiles/asmopt.dir/src/main.c.s
 .PHONY : src/main.c.s
-
-tests/test_comprehensive.o: tests/test_comprehensive.c.o
-.PHONY : tests/test_comprehensive.o
-
-# target to build an object file
-tests/test_comprehensive.c.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_comprehensive.dir/build.make CMakeFiles/test_comprehensive.dir/tests/test_comprehensive.c.o
-.PHONY : tests/test_comprehensive.c.o
-
-tests/test_comprehensive.i: tests/test_comprehensive.c.i
-.PHONY : tests/test_comprehensive.i
-
-# target to preprocess a source file
-tests/test_comprehensive.c.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_comprehensive.dir/build.make CMakeFiles/test_comprehensive.dir/tests/test_comprehensive.c.i
-.PHONY : tests/test_comprehensive.c.i
-
-tests/test_comprehensive.s: tests/test_comprehensive.c.s
-.PHONY : tests/test_comprehensive.s
-
-# target to generate assembly for a file
-tests/test_comprehensive.c.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_comprehensive.dir/build.make CMakeFiles/test_comprehensive.dir/tests/test_comprehensive.c.s
-.PHONY : tests/test_comprehensive.c.s
 
 tests/test_integration.o: tests/test_integration.c.o
 .PHONY : tests/test_integration.o
@@ -322,7 +288,6 @@ help:
 	@echo "... test"
 	@echo "... asmopt"
 	@echo "... asmopt_lib"
-	@echo "... test_comprehensive"
 	@echo "... test_integration"
 	@echo "... test_peephole"
 	@echo "... src/asmopt.o"
@@ -331,9 +296,6 @@ help:
 	@echo "... src/main.o"
 	@echo "... src/main.i"
 	@echo "... src/main.s"
-	@echo "... tests/test_comprehensive.o"
-	@echo "... tests/test_comprehensive.i"
-	@echo "... tests/test_comprehensive.s"
 	@echo "... tests/test_integration.o"
 	@echo "... tests/test_integration.i"
 	@echo "... tests/test_integration.s"

@@ -1,4 +1,8 @@
 /home/runner/work/asmopt/asmopt/build/CMakeFiles/asmopt_lib.dir
 /home/runner/work/asmopt/asmopt/build/CMakeFiles/asmopt.dir
+/home/runner/work/asmopt/asmopt/build/CMakeFiles/test_peephole.dir
+/home/runner/work/asmopt/asmopt/build/CMakeFiles/test_integration.dir
+/home/runner/work/asmopt/asmopt/build/CMakeFiles/test_comprehensive.dir
+/home/runner/work/asmopt/asmopt/build/CMakeFiles/test.dir
 /home/runner/work/asmopt/asmopt/build/CMakeFiles/edit_cache.dir
 /home/runner/work/asmopt/asmopt/build/CMakeFiles/rebuild_cache.dir

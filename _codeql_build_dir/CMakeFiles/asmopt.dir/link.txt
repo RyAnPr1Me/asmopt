@@ -1,0 +1,1 @@
+/home/runner/work/asmopt/.codeql-scratch/dbs/cpp/working/autobuild/bin/cc -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/asmopt.dir/link.d CMakeFiles/asmopt.dir/src/main.c.o -o asmopt  libasmopt_lib.a
