@@ -617,6 +617,28 @@ static int test_sub_minus_one_optimization() {
     TEST_PASS("test_sub_minus_one_optimization");
 }
 
+/* Test and self optimization */
+static int test_and_self_optimization() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input =
+        "and rax, rax\n"
+        "and rbx, rcx\n";
+    
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "test rax, rax") != NULL, "and self not converted to test");
+    TEST_ASSERT(strstr(output, "and rbx, rcx") != NULL, "Non-self and was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_and_self_optimization");
+}
+
 int main() {
     int passed = 0;
     int total = 0;
@@ -652,6 +674,7 @@ int main() {
     total++; passed += test_or_self_optimization();
     total++; passed += test_add_minus_one_optimization();
     total++; passed += test_sub_minus_one_optimization();
+    total++; passed += test_and_self_optimization();
     
     printf("\n========================================\n");
     printf("Test Results: %d/%d tests passed\n", passed, total);

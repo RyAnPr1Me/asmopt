@@ -789,8 +789,8 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
     /*
      * Peephole Optimizer - Pattern Matching Engine
      * 
-     * This function implements 18 peephole optimization patterns for x86-64 assembly:
-     * (7 identity + 1 redundant move + 10 replacements)
+     * This function implements 19 peephole optimization patterns for x86-64 assembly:
+     * (7 identity + 1 redundant move + 11 replacements)
      * 
      * Identity/No-op Eliminations (7 patterns):
      *   Pattern 1: mov rax, rax            → (removed)        - Redundant self-move
@@ -804,7 +804,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
      * Redundant Move Elimination (1 pattern):
      *   Pattern 12: mov a, b + mov b, a    → mov a, b         - Remove redundant move
      * 
-     * Instruction Replacements (10 patterns):
+     * Instruction Replacements (11 patterns):
      *   Pattern 2: mov rax, 0              → xor rax, rax     - Smaller encoding, breaks deps
      *   Pattern 4: imul rax, 8             → shl rax, 3       - Faster shift for power-of-2
      *   Pattern 10: add rax, 1             → inc rax          - Size opt (note: flag deps on P4+)
@@ -815,6 +815,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
      *   Pattern 16: or rax, rax            → test rax, rax    - Flag-only
      *   Pattern 17: add rax, -1            → dec rax          - Negative add
      *   Pattern 18: sub rax, -1            → inc rax          - Negative sub
+     *   Pattern 19: and rax, rax           → test rax, rax    - Flag-only
      * 
      * Note: inc/dec create false dependencies on flags register (Pentium 4+), so patterns
      * 10-11 optimize for size. Future: make configurable (-Os vs -O3).
@@ -1264,6 +1265,40 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                              indent, inc_name, spacing, dest);
                 }
                 asmopt_record_optimization(ctx, line_no, "sub_minus_one_to_inc", line, newline);
+                asmopt_store_optimized_line(ctx, newline);
+                free(newline);
+                *replaced = true;
+            }
+            free(trimmed_comment);
+            goto cleanup;
+        }
+    }
+
+    /* Pattern 19: and rax, rax -> test rax, rax */
+    if (strcmp(base_mnemonic, "and") == 0 && has_two_ops && dest_reg && src_reg) {
+        if (asmopt_casecmp(dest, src) == 0) {
+            char test_name[8];
+            if (suffix) {
+                snprintf(test_name, sizeof(test_name), "test%c", suffix);
+            } else {
+                snprintf(test_name, sizeof(test_name), "test");
+            }
+            char* trimmed_comment = asmopt_trim_comment(comment);
+            size_t new_len = strlen(indent) + strlen(test_name) + strlen(spacing) +
+                             strlen(dest) + strlen(pre_space) + strlen(post_space) + strlen(dest) + 2;
+            if (!asmopt_is_blank(trimmed_comment)) {
+                new_len += strlen(trimmed_comment) + 1;
+            }
+            char* newline = malloc(new_len + 1);
+            if (newline) {
+                if (!asmopt_is_blank(trimmed_comment)) {
+                    snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s %s",
+                             indent, test_name, spacing, dest, pre_space, post_space, dest, trimmed_comment);
+                } else {
+                    snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s",
+                             indent, test_name, spacing, dest, pre_space, post_space, dest);
+                }
+                asmopt_record_optimization(ctx, line_no, "and_self_to_test", line, newline);
                 asmopt_store_optimized_line(ctx, newline);
                 free(newline);
                 *replaced = true;
