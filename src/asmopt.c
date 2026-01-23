@@ -1354,7 +1354,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
     /* Single-operand jump; commas indicate multi-operand syntax (not expected for jmp). */
     if (!has_two_ops && operands && *operands && asmopt_is_unconditional_jump(base_mnemonic) && !strchr(operands, ',')) {
         char* trimmed = asmopt_strip(operands);
-        if (trimmed && *trimmed && line_no + 1 < ctx->original_count) {
+        if (trimmed && *trimmed && line_no < ctx->original_count) {
             const char* next_line = ctx->original_lines[line_no];
             char* next_code = NULL;
             char* next_comment = NULL;
