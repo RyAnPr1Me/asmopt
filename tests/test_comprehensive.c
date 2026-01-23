@@ -529,6 +529,50 @@ static int test_and_zero_optimization() {
     TEST_PASS("test_and_zero_optimization");
 }
 
+/* Test cmp zero optimization */
+static int test_cmp_zero_optimization() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input =
+        "cmp rax, 0\n"
+        "cmp rbx, 3\n";
+    
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "test rax, rax") != NULL, "cmp 0 not converted to test");
+    TEST_ASSERT(strstr(output, "cmp rbx, 3") != NULL, "Non-zero cmp was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_cmp_zero_optimization");
+}
+
+/* Test or self optimization */
+static int test_or_self_optimization() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input =
+        "or rax, rax\n"
+        "or rbx, rcx\n";
+    
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "test rax, rax") != NULL, "or self not converted to test");
+    TEST_ASSERT(strstr(output, "or rbx, rcx") != NULL, "Non-self or was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_or_self_optimization");
+}
+
 int main() {
     int passed = 0;
     int total = 0;
@@ -560,6 +604,8 @@ int main() {
     total++; passed += test_swap_move_optimization();
     total++; passed += test_sub_self_optimization();
     total++; passed += test_and_zero_optimization();
+    total++; passed += test_cmp_zero_optimization();
+    total++; passed += test_or_self_optimization();
     
     printf("\n========================================\n");
     printf("Test Results: %d/%d tests passed\n", passed, total);
