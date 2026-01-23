@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include "test_constants.h"
+#include "../include/asmopt.h"
 
 #define TEST_ASSERT(condition, message) do { \
     if (!(condition)) { \
@@ -491,7 +491,7 @@ static int test_hot_loop_alignment() {
     char* output = asmopt_generate_assembly(ctx);
     TEST_ASSERT(output != NULL, "Failed to generate output");
     char expected[32];
-    snprintf(expected, sizeof(expected), ".align %d", HOT_LOOP_ALIGNMENT);
+    snprintf(expected, sizeof(expected), ".align %d", ASMOPT_HOT_LOOP_ALIGNMENT);
     TEST_ASSERT(strstr(output, expected) != NULL, "Alignment directive missing");
     
     free(output);

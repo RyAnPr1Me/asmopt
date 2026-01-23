@@ -32,7 +32,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../tests/test_constants.h"
+#include "asmopt.h"
 
 #define IMMEDIATE_BUFFER_SIZE 64
 
@@ -865,10 +865,10 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
         if (trimmed) {
             if (ctx->insert_hot_align && strcmp(trimmed, ".hot_loop:") == 0) {
                 char align_line[32];
-                snprintf(align_line, sizeof(align_line), "    .align %d", HOT_LOOP_ALIGNMENT);
+                snprintf(align_line, sizeof(align_line), "    .align %d", ASMOPT_HOT_LOOP_ALIGNMENT);
                 asmopt_store_optimized_line(ctx, align_line);
                 char align_report[128];
-                snprintf(align_report, sizeof(align_report), "    .align %d\n.hot_loop:", HOT_LOOP_ALIGNMENT);
+                snprintf(align_report, sizeof(align_report), "    .align %d\n.hot_loop:", ASMOPT_HOT_LOOP_ALIGNMENT);
                 asmopt_record_optimization(ctx, line_no, "hot_loop_align", line, align_report);
                 asmopt_store_optimized_line(ctx, line);
                 free(trimmed);

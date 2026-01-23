@@ -1,6 +1,0 @@
-#ifndef ASMOPT_TEST_CONSTANTS_H
-#define ASMOPT_TEST_CONSTANTS_H
-
-#define HOT_LOOP_ALIGNMENT 64
-
-#endif
