@@ -684,6 +684,28 @@ static int test_fallthrough_jump_optimization() {
     TEST_PASS("test_fallthrough_jump_optimization");
 }
 
+/* Test hot loop alignment */
+static int test_hot_loop_alignment() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    asmopt_set_option(ctx, "hot_align", "1");
+    const char* input =
+        ".hot_loop:\n"
+        "add rax, 1\n";
+    
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, ".align 64") != NULL, "Alignment directive missing");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_hot_loop_alignment");
+}
+
 int main() {
     int passed = 0;
     int total = 0;
@@ -722,6 +744,7 @@ int main() {
     total++; passed += test_and_self_optimization();
     total++; passed += test_cmp_self_optimization();
     total++; passed += test_fallthrough_jump_optimization();
+    total++; passed += test_hot_loop_alignment();
     
     printf("\n========================================\n");
     printf("Test Results: %d/%d tests passed\n", passed, total);

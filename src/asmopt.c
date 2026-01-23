@@ -104,6 +104,7 @@ struct asmopt_context {
     asmopt_optimization_event* opt_events;
     size_t opt_event_count;
     size_t opt_event_capacity;
+    bool insert_hot_align;
 };
 
 /* Instruction mnemonics that can have AT&T syntax suffixes (b, w, l, q) */
@@ -227,6 +228,18 @@ static void asmopt_reset_lines(asmopt_context* ctx) {
     asmopt_reset_cfg(ctx);
     asmopt_reset_opt_events(ctx);
     memset(&ctx->stats, 0, sizeof(ctx->stats));
+}
+
+static bool asmopt_option_enabled(asmopt_context* ctx, const char* key) {
+    if (!ctx || !key) {
+        return false;
+    }
+    for (size_t i = 0; i < ctx->option_count; i++) {
+        if (ctx->options[i].key && strcmp(ctx->options[i].key, key) == 0) {
+            return ctx->options[i].value && strcmp(ctx->options[i].value, "1") == 0;
+        }
+    }
+    return false;
 }
 
 static void asmopt_add_option(asmopt_context* ctx, const char* key, const char* value) {
@@ -793,8 +806,9 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
     /*
      * Peephole Optimizer - Pattern Matching Engine
      * 
-     * This function implements 21 optimization patterns for x86-64 assembly:
-     * (7 identity + 1 redundant move + 12 replacements: 2,4,10,11,13-20 + 1 control-flow)
+     * This function implements 22 optimization patterns for x86-64 assembly:
+     * (7 identity + 1 redundant move + 12 replacements: 2,4,10,11,13-20 + 1 control-flow
+     *  + 1 cache-aware)
      * 
      * Identity/No-op Eliminations (7 patterns):
      *   Pattern 1: mov rax, rax            → (removed)        - Redundant self-move
@@ -825,6 +839,9 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
      * Control-flow (1 pattern):
      *   Pattern 21: jmp next_label         → (removed)        - Fallthrough jump
      * 
+     * Cache-aware (1 pattern):
+     *   Pattern 22: .hot_loop:             → .align 64 + label - Align hot loop headers
+     * 
      * Note: inc/dec create false dependencies on flags register (Pentium 4+), so patterns
      * 10-11 optimize for size. Future: make configurable (-Os vs -O3).
      * 
@@ -842,6 +859,16 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
         return;
     }
     if (asmopt_is_directive_or_label(code)) {
+        char* trimmed = asmopt_strip(code);
+        if (trimmed && ctx->insert_hot_align && trimmed[0] != '\0') {
+            size_t len = strlen(trimmed);
+            if (len > 1 && trimmed[len - 1] == ':' && strcmp(trimmed, ".hot_loop:") == 0) {
+                asmopt_store_optimized_line(ctx, "    .align 64");
+                asmopt_record_optimization(ctx, line_no, "hot_loop_align", line, "    .align 64\n.hot_loop:");
+                *replaced = true;
+            }
+        }
+        free(trimmed);
         asmopt_store_optimized_line(ctx, line);
         free(code);
         free(comment);
@@ -2152,6 +2179,7 @@ int asmopt_optimize(asmopt_context* ctx) {
     ctx->stats.removals = 0;
     asmopt_build_ir(ctx);
     asmopt_build_cfg(ctx);
+    ctx->insert_hot_align = asmopt_option_enabled(ctx, "hot_align");
     bool do_opt = asmopt_should_optimize(ctx);
     for (size_t i = 0; i < ctx->original_count; i++) {
         if (!do_opt) {

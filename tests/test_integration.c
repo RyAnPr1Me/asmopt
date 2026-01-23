@@ -23,6 +23,7 @@
 static int test_complete_function() {
     asmopt_context* ctx = asmopt_create("x86-64");
     TEST_ASSERT(ctx != NULL, "Failed to create context");
+    asmopt_set_option(ctx, "hot_align", "1");
     
     const char* input = 
         ".text\n"
@@ -48,6 +49,7 @@ static int test_complete_function() {
         "    cmp rcx, rcx     ; self-compare\n"
         "    jmp .fallthrough\n"
         ".fallthrough:\n"
+        ".hot_loop:\n"
         "    mov r13, r14     ; swap 1\n"
         "    mov r14, r13     ; swap 2\n"
         "    sub rax, rax     ; zero idiom\n"
@@ -86,6 +88,7 @@ static int test_complete_function() {
     TEST_ASSERT(strstr(output, "jmp .fallthrough") == NULL, "Fallthrough jump not removed");
     TEST_ASSERT(strstr(output, "inc r11") != NULL, "add 1 not converted to inc");
     TEST_ASSERT(strstr(output, "dec r12") != NULL, "sub 1 not converted to dec");
+    TEST_ASSERT(strstr(output, ".align 64") != NULL, "Hot loop not aligned");
     TEST_ASSERT(strstr(output, "mov r13, r14") != NULL, "Swap move not preserved");
     
     /* Verify non-optimizable kept */
@@ -95,10 +98,8 @@ static int test_complete_function() {
     
     size_t original, optimized, replacements, removals;
     asmopt_get_stats(ctx, &original, &optimized, &replacements, &removals);
-    /* 13 replacements: mov0/xor, imul/shl, add1/inc, sub1/dec, cmp0/test, or-self/test,
-       add-1/dec, sub-1/inc, and-self/test, cmp-self/test, and_zero/xor, sub-self/xor,
-       redundant move keep */
-    TEST_ASSERT(replacements == 13, "Expected 13 replacements");
+    /* 14 replacements: adds hot_loop align directive on top of previous 13. */
+    TEST_ASSERT(replacements == 14, "Expected 14 replacements");
     /* 9 removals: redundant mov, imul-by-1, add/sub zero, shift zero, or zero, xor zero,
        and -1, fallthrough jump */
     TEST_ASSERT(removals == 9, "Expected 9 removals");
@@ -121,6 +122,7 @@ static int test_file_io() {
     
     asmopt_context* ctx = asmopt_create("x86-64");
     TEST_ASSERT(ctx != NULL, "Failed to create context");
+    asmopt_set_option(ctx, "hot_align", "1");
     
     int result = asmopt_parse_file(ctx, test_file);
     TEST_ASSERT(result == 0, "Failed to parse file");
@@ -307,6 +309,7 @@ static int test_edge_cases() {
 static int test_comprehensive_report() {
     asmopt_context* ctx = asmopt_create("x86-64");
     TEST_ASSERT(ctx != NULL, "Failed to create context");
+    asmopt_set_option(ctx, "hot_align", "1");
     
     const char* input = 
         "mov rax, rax\n"    /* Pattern 1 */
@@ -331,7 +334,8 @@ static int test_comprehensive_report() {
         "and r8, r8\n"      /* Pattern 19 */
         "cmp r9, r9\n"      /* Pattern 20 */
         "jmp .fall\n"
-        ".fall:\n";         /* Pattern 21 */
+        ".fall:\n"          /* Pattern 21 */
+        ".hot_loop:\n";     /* Pattern 22 */
     
     asmopt_parse_string(ctx, input);
     asmopt_optimize(ctx);
@@ -361,9 +365,10 @@ static int test_comprehensive_report() {
     TEST_ASSERT(strstr(report, "and_self_to_test") != NULL, "Pattern 19 missing");
     TEST_ASSERT(strstr(report, "cmp_self_to_test") != NULL, "Pattern 20 missing");
     TEST_ASSERT(strstr(report, "fallthrough_jump") != NULL, "Pattern 21 missing");
+    TEST_ASSERT(strstr(report, "hot_loop_align") != NULL, "Pattern 22 missing");
     
-    /* 13 replacements correspond to the same list in test_complete_function above. */
-    TEST_ASSERT(strstr(report, "Replacements: 13") != NULL, "Wrong replacement count");
+    /* 14 replacements correspond to the same list in test_complete_function above. */
+    TEST_ASSERT(strstr(report, "Replacements: 14") != NULL, "Wrong replacement count");
     TEST_ASSERT(strstr(report, "Removals: 9") != NULL, "Wrong removal count");
     
     free(report);
