@@ -90,6 +90,8 @@ static int test_complete_function() {
     
     size_t original, optimized, replacements, removals;
     asmopt_get_stats(ctx, &original, &optimized, &replacements, &removals);
+    /* 12 replacements: mov0/xor, imul/shl, add1/inc, sub1/dec, cmp0/test, or-self/test,
+       add-1/dec, sub-1/inc, and-self/test, and_zero/xor, sub-self/xor, redundant move keep */
     TEST_ASSERT(replacements == 12, "Expected 12 replacements");
     TEST_ASSERT(removals == 8, "Expected 8 removals");
     
@@ -347,6 +349,7 @@ static int test_comprehensive_report() {
     TEST_ASSERT(strstr(report, "sub_minus_one_to_inc") != NULL, "Pattern 18 missing");
     TEST_ASSERT(strstr(report, "and_self_to_test") != NULL, "Pattern 19 missing");
     
+    /* 12 replacements correspond to the same list in test_complete_function above. */
     TEST_ASSERT(strstr(report, "Replacements: 12") != NULL, "Wrong replacement count");
     TEST_ASSERT(strstr(report, "Removals: 8") != NULL, "Wrong removal count");
     
