@@ -790,6 +790,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
      * Peephole Optimizer - Pattern Matching Engine
      * 
      * This function implements 16 peephole optimization patterns for x86-64 assembly:
+     * (7 identity + 1 redundant move + 8 replacements)
      * 
      * Identity/No-op Eliminations (7 patterns):
      *   Pattern 1: mov rax, rax            → (removed)        - Redundant self-move
