@@ -1354,8 +1354,10 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
     /* Single-operand jump; commas indicate multi-operand syntax (not expected for jmp). */
     if (!has_two_ops && operands && *operands && asmopt_is_unconditional_jump(base_mnemonic) && !strchr(operands, ',')) {
         char* trimmed = asmopt_strip(operands);
-        if (trimmed && *trimmed && line_no < ctx->original_count) {
-            const char* next_line = ctx->original_lines[line_no];
+        if (trimmed && *trimmed) {
+            size_t next_index = line_no; /* line_no is 1-based; next line lives at this index */
+            if (next_index < ctx->original_count) {
+                const char* next_line = ctx->original_lines[next_index];
             char* next_code = NULL;
             char* next_comment = NULL;
             asmopt_split_comment(next_line, &next_code, &next_comment);
@@ -1377,8 +1379,9 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                     free(next_trimmed);
                 }
             }
-            free(next_code);
-            free(next_comment);
+                free(next_code);
+                free(next_comment);
+            }
         }
         free(trimmed);
     }
