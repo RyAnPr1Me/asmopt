@@ -45,6 +45,7 @@ static int test_complete_function() {
         "    add r8, -1       ; negative add\n"
         "    sub r9, -1       ; negative sub\n"
         "    and rdx, rdx     ; flag-only\n"
+        "    cmp rcx, rcx     ; self-compare\n"
         "    mov r13, r14     ; swap 1\n"
         "    mov r14, r13     ; swap 2\n"
         "    sub rax, rax     ; zero idiom\n"
@@ -79,6 +80,7 @@ static int test_complete_function() {
     TEST_ASSERT(strstr(output, "dec r8") != NULL, "add -1 not converted to dec");
     TEST_ASSERT(strstr(output, "inc r9") != NULL, "sub -1 not converted to inc");
     TEST_ASSERT(strstr(output, "test rdx, rdx") != NULL, "and self not converted to test");
+    TEST_ASSERT(strstr(output, "test rcx, rcx") != NULL, "cmp self not converted to test");
     TEST_ASSERT(strstr(output, "inc r11") != NULL, "add 1 not converted to inc");
     TEST_ASSERT(strstr(output, "dec r12") != NULL, "sub 1 not converted to dec");
     TEST_ASSERT(strstr(output, "mov r13, r14") != NULL, "Swap move not preserved");
@@ -90,9 +92,10 @@ static int test_complete_function() {
     
     size_t original, optimized, replacements, removals;
     asmopt_get_stats(ctx, &original, &optimized, &replacements, &removals);
-    /* 12 replacements: mov0/xor, imul/shl, add1/inc, sub1/dec, cmp0/test, or-self/test,
-       add-1/dec, sub-1/inc, and-self/test, and_zero/xor, sub-self/xor, redundant move keep */
-    TEST_ASSERT(replacements == 12, "Expected 12 replacements");
+    /* 13 replacements: mov0/xor, imul/shl, add1/inc, sub1/dec, cmp0/test, or-self/test,
+       add-1/dec, sub-1/inc, and-self/test, cmp-self/test, and_zero/xor, sub-self/xor,
+       redundant move keep */
+    TEST_ASSERT(replacements == 13, "Expected 13 replacements");
     TEST_ASSERT(removals == 8, "Expected 8 removals");
     
     free(output);
@@ -320,7 +323,8 @@ static int test_comprehensive_report() {
         "or rcx, rcx\n"     /* Pattern 16 */
         "add rdx, -1\n"     /* Pattern 17 */
         "sub rsi, -1\n"     /* Pattern 18 */
-        "and r8, r8\n";     /* Pattern 19 */
+        "and r8, r8\n"      /* Pattern 19 */
+        "cmp r9, r9\n";     /* Pattern 20 */
     
     asmopt_parse_string(ctx, input);
     asmopt_optimize(ctx);
@@ -348,9 +352,10 @@ static int test_comprehensive_report() {
     TEST_ASSERT(strstr(report, "add_minus_one_to_dec") != NULL, "Pattern 17 missing");
     TEST_ASSERT(strstr(report, "sub_minus_one_to_inc") != NULL, "Pattern 18 missing");
     TEST_ASSERT(strstr(report, "and_self_to_test") != NULL, "Pattern 19 missing");
+    TEST_ASSERT(strstr(report, "cmp_self_to_test") != NULL, "Pattern 20 missing");
     
-    /* 12 replacements correspond to the same list in test_complete_function above. */
-    TEST_ASSERT(strstr(report, "Replacements: 12") != NULL, "Wrong replacement count");
+    /* 13 replacements correspond to the same list in test_complete_function above. */
+    TEST_ASSERT(strstr(report, "Replacements: 13") != NULL, "Wrong replacement count");
     TEST_ASSERT(strstr(report, "Removals: 8") != NULL, "Wrong removal count");
     
     free(report);
