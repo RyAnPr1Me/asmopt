@@ -768,6 +768,8 @@ static int asmopt_log2(long value) {
     return log;
 }
 
+static bool asmopt_is_jump_mnemonic(const char* mnemonic);
+static bool asmopt_is_conditional_jump(const char* mnemonic);
 static bool asmopt_is_unconditional_jump(const char* mnemonic);
 
 static void asmopt_handle_identity_removal(asmopt_context* ctx, size_t line_no, const char* pattern_name,
@@ -1352,7 +1354,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
     /* Single-operand jump; commas indicate multi-operand syntax (not expected for jmp). */
     if (!has_two_ops && operands && *operands && asmopt_is_unconditional_jump(base_mnemonic) && !strchr(operands, ',')) {
         char* trimmed = asmopt_strip(operands);
-        if (trimmed && *trimmed && line_no + 1 < ctx->original_count) {
+        if (trimmed && *trimmed && line_no < ctx->original_count) {
             const char* next_line = ctx->original_lines[line_no];
             char* next_code = NULL;
             char* next_comment = NULL;
@@ -1554,17 +1556,7 @@ cleanup:
 }
 
 static bool asmopt_is_unconditional_jump(const char* mnemonic) {
-    if (!mnemonic) {
-        return false;
-    }
-    const char* jumps[] = { "jmp", "jmpq", "jmpl", "jmpw" };
-    size_t count = sizeof(jumps) / sizeof(jumps[0]);
-    for (size_t i = 0; i < count; i++) {
-        if (asmopt_casecmp(mnemonic, jumps[i]) == 0) {
-            return true;
-        }
-    }
-    return false;
+    return asmopt_is_jump_mnemonic(mnemonic) && !asmopt_is_conditional_jump(mnemonic);
 }
 
 static bool asmopt_is_jump_mnemonic(const char* mnemonic) {
