@@ -98,8 +98,8 @@ static int test_complete_function() {
     
     size_t original, optimized, replacements, removals;
     asmopt_get_stats(ctx, &original, &optimized, &replacements, &removals);
-    /* 14 replacements: adds hot_loop align directive on top of previous 13. */
-    TEST_ASSERT(replacements == 14, "Expected 14 replacements");
+    /* Replacements unchanged: hot loop alignment is an insertion. */
+    TEST_ASSERT(replacements == 13, "Expected 13 replacements");
     /* 9 removals: redundant mov, imul-by-1, add/sub zero, shift zero, or zero, xor zero,
        and -1, fallthrough jump */
     TEST_ASSERT(removals == 9, "Expected 9 removals");
@@ -367,8 +367,8 @@ static int test_comprehensive_report() {
     TEST_ASSERT(strstr(report, "fallthrough_jump") != NULL, "Pattern 21 missing");
     TEST_ASSERT(strstr(report, "hot_loop_align") != NULL, "Pattern 22 missing");
     
-    /* 14 replacements correspond to the same list in test_complete_function above. */
-    TEST_ASSERT(strstr(report, "Replacements: 14") != NULL, "Wrong replacement count");
+    /* 13 replacements correspond to the same list in test_complete_function above. */
+    TEST_ASSERT(strstr(report, "Replacements: 13") != NULL, "Wrong replacement count");
     TEST_ASSERT(strstr(report, "Removals: 9") != NULL, "Wrong removal count");
     
     free(report);
