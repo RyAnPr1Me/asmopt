@@ -860,15 +860,14 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
     }
     if (asmopt_is_directive_or_label(code)) {
         char* trimmed = asmopt_strip(code);
-        if (trimmed && ctx->insert_hot_align && trimmed[0] != '\0') {
-            size_t len = strlen(trimmed);
-            if (len > 1 && trimmed[len - 1] == ':' && strcmp(trimmed, ".hot_loop:") == 0) {
+        if (trimmed) {
+            if (ctx->insert_hot_align && trimmed[0] != '\0' && strcmp(trimmed, ".hot_loop:") == 0) {
                 asmopt_store_optimized_line(ctx, "    .align 64");
                 asmopt_record_optimization(ctx, line_no, "hot_loop_align", line, "    .align 64\n.hot_loop:");
                 *replaced = true;
             }
+            free(trimmed);
         }
-        free(trimmed);
         asmopt_store_optimized_line(ctx, line);
         free(code);
         free(comment);
