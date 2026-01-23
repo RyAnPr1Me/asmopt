@@ -37,10 +37,12 @@ static int test_complete_function() {
         "    or r8, 0         ; identity\n"
         "    xor r9, 0        ; identity (not xor reg,reg)\n"
         "    and r10, -1      ; identity\n"
+        "    and r14, 0       ; zero idiom\n"
         "    add r11, 1       ; should become inc\n"
         "    sub r12, 1       ; should become dec\n"
         "    mov r13, r14     ; swap 1\n"
         "    mov r14, r13     ; swap 2\n"
+        "    sub rax, rax     ; zero idiom\n"
         "    xor r15, r15     ; zero idiom - keep\n"
         "    mov rbx, 42      ; keep\n"
         "    ret\n";
@@ -58,7 +60,6 @@ static int test_complete_function() {
     
     /* Verify optimizations applied */
     TEST_ASSERT(strstr(output, "mov rax, rax") == NULL, "Redundant mov not removed");
-    TEST_ASSERT(strstr(output, "xor rbx, rbx") != NULL, "mov 0 not converted to xor");
     TEST_ASSERT(strstr(output, "imul rcx, 1") == NULL, "Multiply by 1 not removed");
     TEST_ASSERT(strstr(output, "shl rdx, 4") != NULL, "Power of 2 multiply not converted");
     TEST_ASSERT(strstr(output, "add rsi, 0") == NULL, "Add zero not removed");
@@ -66,6 +67,8 @@ static int test_complete_function() {
     TEST_ASSERT(strstr(output, "or r8, 0") == NULL, "OR zero not removed");
     TEST_ASSERT(strstr(output, "xor r9, 0") == NULL, "XOR zero immediate not removed");
     TEST_ASSERT(strstr(output, "and r10, -1") == NULL, "AND -1 not removed");
+    TEST_ASSERT(strstr(output, "xor r14, r14") != NULL, "AND zero not converted to xor");
+    TEST_ASSERT(strstr(output, "xor rax, rax") != NULL, "sub self not converted to xor");
     TEST_ASSERT(strstr(output, "inc r11") != NULL, "add 1 not converted to inc");
     TEST_ASSERT(strstr(output, "dec r12") != NULL, "sub 1 not converted to dec");
     TEST_ASSERT(strstr(output, "xchg r13, r14") != NULL, "Swap moves not converted");
@@ -77,7 +80,7 @@ static int test_complete_function() {
     
     size_t original, optimized, replacements, removals;
     asmopt_get_stats(ctx, &original, &optimized, &replacements, &removals);
-    TEST_ASSERT(replacements == 5, "Expected 5 replacements");
+    TEST_ASSERT(replacements == 7, "Expected 7 replacements");
     TEST_ASSERT(removals == 8, "Expected 8 removals");
     
     free(output);
@@ -298,7 +301,9 @@ static int test_comprehensive_report() {
         "add r11, 1\n"      /* Pattern 10 */
         "sub r12, 1\n"      /* Pattern 11 */
         "mov r13, r14\n"    /* Pattern 12 */
-        "mov r14, r13\n";   /* Pattern 12 */
+        "mov r14, r13\n"    /* Pattern 12 */
+        "sub r15, r15\n"    /* Pattern 13 */
+        "and rax, 0\n";     /* Pattern 14 */
     
     asmopt_parse_string(ctx, input);
     asmopt_optimize(ctx);
@@ -319,8 +324,10 @@ static int test_comprehensive_report() {
     TEST_ASSERT(strstr(report, "add_one_to_inc") != NULL, "Pattern 10 missing");
     TEST_ASSERT(strstr(report, "sub_one_to_dec") != NULL, "Pattern 11 missing");
     TEST_ASSERT(strstr(report, "swap_moves_to_xchg") != NULL, "Pattern 12 missing");
+    TEST_ASSERT(strstr(report, "sub_self_to_xor") != NULL, "Pattern 13 missing");
+    TEST_ASSERT(strstr(report, "and_zero_to_xor") != NULL, "Pattern 14 missing");
     
-    TEST_ASSERT(strstr(report, "Replacements: 5") != NULL, "Wrong replacement count");
+    TEST_ASSERT(strstr(report, "Replacements: 7") != NULL, "Wrong replacement count");
     TEST_ASSERT(strstr(report, "Removals: 8") != NULL, "Wrong removal count");
     
     free(report);

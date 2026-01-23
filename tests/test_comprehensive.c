@@ -485,6 +485,50 @@ static int test_swap_move_optimization() {
     TEST_PASS("test_swap_move_optimization");
 }
 
+/* Test sub self optimization */
+static int test_sub_self_optimization() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input =
+        "sub rax, rax\n"
+        "sub rbx, rcx\n";
+    
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "xor rax, rax") != NULL, "sub self not converted to xor");
+    TEST_ASSERT(strstr(output, "sub rbx, rcx") != NULL, "Non-self sub was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_sub_self_optimization");
+}
+
+/* Test and zero optimization */
+static int test_and_zero_optimization() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input =
+        "and rax, 0\n"
+        "and rbx, 7\n";
+    
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "xor rax, rax") != NULL, "and 0 not converted to xor");
+    TEST_ASSERT(strstr(output, "and rbx, 7") != NULL, "Non-zero and was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_and_zero_optimization");
+}
+
 int main() {
     int passed = 0;
     int total = 0;
@@ -514,6 +558,8 @@ int main() {
     total++; passed += test_memory_operands();
     total++; passed += test_all_powers_of_2();
     total++; passed += test_swap_move_optimization();
+    total++; passed += test_sub_self_optimization();
+    total++; passed += test_and_zero_optimization();
     
     printf("\n========================================\n");
     printf("Test Results: %d/%d tests passed\n", passed, total);
