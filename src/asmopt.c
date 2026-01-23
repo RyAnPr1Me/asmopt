@@ -800,12 +800,14 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
      *   Pattern 8: xor rax, 0              → (removed)        - Identity XOR (immediate only)
      *   Pattern 9: and rax, -1             → (removed)        - Identity AND (all bits)
      * 
-     * Instruction Replacements (7 patterns):
+     * Redundant Move Elimination (1 pattern):
+     *   Pattern 12: mov a, b + mov b, a    → mov a, b         - Remove redundant move
+     * 
+     * Instruction Replacements (6 patterns):
      *   Pattern 2: mov rax, 0              → xor rax, rax     - Smaller encoding, breaks deps
      *   Pattern 4: imul rax, 8             → shl rax, 3       - Faster shift for power-of-2
      *   Pattern 10: add rax, 1             → inc rax          - Size opt (note: flag deps on P4+)
      *   Pattern 11: sub rax, 1             → dec rax          - Size opt (note: flag deps on P4+)
-     *   Pattern 12: mov a, b + mov b, a    → xchg a, b        - Swap elimination
      *   Pattern 13: sub rax, rax           → xor rax, rax     - Zero idiom
      *   Pattern 14: and rax, 0             → xor rax, rax     - Zero idiom
      * 
@@ -945,7 +947,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
         }
     }
 
-    /* Pattern 12: mov rax, rbx / mov rbx, rax -> xchg rax, rbx */
+    /* Pattern 12: mov rax, rbx / mov rbx, rax -> remove redundant move */
     if (strcmp(base_mnemonic, "mov") == 0 && has_two_ops && dest_reg && src_reg) {
         if (line_no < ctx->original_count) {
             const char* next_line = ctx->original_lines[line_no];
@@ -1013,43 +1015,15 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                                            asmopt_casecmp(dest, next_src) == 0 &&
                                            asmopt_casecmp(src, next_dest) == 0;
                             if (swapped) {
-                                char xchg_name[8];
-                                if (suffix && next_suffix && suffix == next_suffix) {
-                                    snprintf(xchg_name, sizeof(xchg_name), "xchg%c", suffix);
-                                } else if (suffix) {
-                                    snprintf(xchg_name, sizeof(xchg_name), "xchg%c", suffix);
-                                } else {
-                                    snprintf(xchg_name, sizeof(xchg_name), "xchg");
+                                size_t combo_len = strlen(line) + strlen(next_line) + 2;
+                                char* combined = malloc(combo_len + 1);
+                                if (combined) {
+                                    snprintf(combined, combo_len + 1, "%s\n%s", line, next_line);
+                                    asmopt_record_optimization(ctx, line_no, "redundant_move_pair", combined, line);
+                                    free(combined);
                                 }
-                                char* trimmed_comment = asmopt_trim_comment(comment);
-                                size_t new_len = strlen(indent) + strlen(xchg_name) + strlen(spacing) +
-                                                 strlen(dest) + strlen(pre_space) + strlen(post_space) + strlen(src) + 2;
-                                if (!asmopt_is_blank(trimmed_comment)) {
-                                    new_len += strlen(trimmed_comment) + 1;
-                                }
-                                char* newline = malloc(new_len + 1);
-                                if (newline) {
-                                    if (!asmopt_is_blank(trimmed_comment)) {
-                                        snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s %s",
-                                                indent, xchg_name, spacing, dest, pre_space, post_space, src, trimmed_comment);
-                                    } else {
-                                        snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s",
-                                                indent, xchg_name, spacing, dest, pre_space, post_space, src);
-                                    }
-                                    size_t combo_len = strlen(line) + strlen(next_line) + 2;
-                                    char* combined = malloc(combo_len + 1);
-                                    if (combined) {
-                                        snprintf(combined, combo_len + 1, "%s\n%s", line, next_line);
-                                        asmopt_record_optimization(ctx, line_no, "swap_moves_to_xchg", combined, newline);
-                                        free(combined);
-                                    } else {
-                                        asmopt_record_optimization(ctx, line_no, "swap_moves_to_xchg", line, newline);
-                                    }
-                                    asmopt_store_optimized_line(ctx, newline);
-                                    free(newline);
-                                    *replaced = true;
-                                }
-                                free(trimmed_comment);
+                                asmopt_store_optimized_line(ctx, line);
+                                *replaced = true;
                                 if (!asmopt_is_blank(next_comment)) {
                                     char* trimmed_next = asmopt_trim_comment(next_comment);
                                     size_t next_len = strlen(next_indent) + strlen(trimmed_next) + 1;
@@ -1061,7 +1035,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                                     }
                                     free(trimmed_next);
                                 }
-                                asmopt_record_optimization(ctx, line_no + 1, "swap_moves_to_xchg", next_line, NULL);
+                                asmopt_record_optimization(ctx, line_no + 1, "redundant_move_pair", next_line, NULL);
                                 *removed = true;
                                 free(next_op1);
                                 free(next_op2);

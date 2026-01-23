@@ -287,8 +287,8 @@ static int test_add_one_to_inc() {
     TEST_PASS("test_add_one_to_inc");
 }
 
-/* Test Pattern 12: swap moves to xchg */
-static int test_swap_moves_to_xchg() {
+/* Test Pattern 12: redundant swap move elimination */
+static int test_swap_move_elimination() {
     asmopt_context* ctx = asmopt_create("x86-64");
     TEST_ASSERT(ctx != NULL, "Failed to create context");
     
@@ -298,12 +298,12 @@ static int test_swap_moves_to_xchg() {
     
     char* output = asmopt_generate_assembly(ctx);
     TEST_ASSERT(output != NULL, "Failed to generate output");
-    TEST_ASSERT(strstr(output, "xchg rax, rbx") != NULL, "Swap moves not converted to xchg");
+    TEST_ASSERT(strstr(output, "mov rax, rbx") != NULL, "First mov should remain");
     TEST_ASSERT(strstr(output, "mov rbx, rax") == NULL, "Second mov not removed");
     
     free(output);
     asmopt_destroy(ctx);
-    TEST_PASS("test_swap_moves_to_xchg");
+    TEST_PASS("test_swap_move_elimination");
 }
 
 /* Test Pattern 13: sub reg, reg -> xor reg, reg */
@@ -379,7 +379,7 @@ int main() {
     total++; passed += test_xor_zero();
     total++; passed += test_add_one_to_inc();
     total++; passed += test_sub_one_to_dec();
-    total++; passed += test_swap_moves_to_xchg();
+    total++; passed += test_swap_move_elimination();
     total++; passed += test_sub_self_to_xor();
     total++; passed += test_and_zero_to_xor();
     total++; passed += test_optimization_stats();

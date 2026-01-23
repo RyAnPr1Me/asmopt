@@ -463,7 +463,7 @@ static int test_all_powers_of_2() {
     TEST_PASS("test_all_powers_of_2");
 }
 
-/* Test swap move optimization */
+/* Test swap move elimination */
 static int test_swap_move_optimization() {
     asmopt_context* ctx = asmopt_create("x86-64");
     TEST_ASSERT(ctx != NULL, "Failed to create context");
@@ -477,7 +477,7 @@ static int test_swap_move_optimization() {
     
     char* output = asmopt_generate_assembly(ctx);
     TEST_ASSERT(output != NULL, "Failed to generate output");
-    TEST_ASSERT(strstr(output, "xchg rax, rbx") != NULL, "Swap moves not converted");
+    TEST_ASSERT(strstr(output, "mov rax, rbx") != NULL, "Swap move not preserved");
     TEST_ASSERT(strstr(output, "mov rbx, rax") == NULL, "Second mov not removed");
     
     free(output);

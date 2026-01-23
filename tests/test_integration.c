@@ -71,7 +71,7 @@ static int test_complete_function() {
     TEST_ASSERT(strstr(output, "xor rax, rax") != NULL, "sub self not converted to xor");
     TEST_ASSERT(strstr(output, "inc r11") != NULL, "add 1 not converted to inc");
     TEST_ASSERT(strstr(output, "dec r12") != NULL, "sub 1 not converted to dec");
-    TEST_ASSERT(strstr(output, "xchg r13, r14") != NULL, "Swap moves not converted");
+    TEST_ASSERT(strstr(output, "mov r13, r14") != NULL, "Swap move not preserved");
     
     /* Verify non-optimizable kept */
     TEST_ASSERT(strstr(output, "xor r15, r15") != NULL, "Zero idiom removed");
@@ -323,7 +323,7 @@ static int test_comprehensive_report() {
     TEST_ASSERT(strstr(report, "and_minus_one") != NULL, "Pattern 9 missing");
     TEST_ASSERT(strstr(report, "add_one_to_inc") != NULL, "Pattern 10 missing");
     TEST_ASSERT(strstr(report, "sub_one_to_dec") != NULL, "Pattern 11 missing");
-    TEST_ASSERT(strstr(report, "swap_moves_to_xchg") != NULL, "Pattern 12 missing");
+    TEST_ASSERT(strstr(report, "redundant_move_pair") != NULL, "Pattern 12 missing");
     TEST_ASSERT(strstr(report, "sub_self_to_xor") != NULL, "Pattern 13 missing");
     TEST_ASSERT(strstr(report, "and_zero_to_xor") != NULL, "Pattern 14 missing");
     
