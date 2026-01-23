@@ -867,7 +867,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                 char align_line[32];
                 snprintf(align_line, sizeof(align_line), "    .align %d", HOT_LOOP_ALIGNMENT);
                 asmopt_store_optimized_line(ctx, align_line);
-                char align_report[64];
+                char align_report[128];
                 snprintf(align_report, sizeof(align_report), "    .align %d\n.hot_loop:", HOT_LOOP_ALIGNMENT);
                 asmopt_record_optimization(ctx, line_no, "hot_loop_align", line, align_report);
                 asmopt_store_optimized_line(ctx, line);

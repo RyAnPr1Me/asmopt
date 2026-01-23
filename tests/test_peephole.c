@@ -7,8 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-
-#define HOT_LOOP_ALIGNMENT 64
+#include "test_constants.h"
 
 #define TEST_ASSERT(condition, message) do { \
     if (!(condition)) { \
