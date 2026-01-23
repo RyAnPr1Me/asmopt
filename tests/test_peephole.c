@@ -268,6 +268,44 @@ static int test_directives_and_labels() {
     TEST_PASS("test_directives_and_labels");
 }
 
+/* Test Pattern 10: add 1 to inc */
+static int test_add_one_to_inc() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "add rax, 1\nadd rbx, 2\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "inc rax") != NULL, "add 1 not converted to inc");
+    TEST_ASSERT(strstr(output, "add rbx, 2") != NULL, "add 2 was incorrectly changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_add_one_to_inc");
+}
+
+/* Test Pattern 11: sub 1 to dec */
+static int test_sub_one_to_dec() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "sub rax, 1\nsub rbx, 3\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "dec rax") != NULL, "sub 1 not converted to dec");
+    TEST_ASSERT(strstr(output, "sub rbx, 3") != NULL, "sub 3 was incorrectly changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_sub_one_to_dec");
+}
+
 int main() {
     int passed = 0;
     int total = 0;
@@ -282,6 +320,8 @@ int main() {
     total++; passed += test_shift_zero();
     total++; passed += test_or_zero();
     total++; passed += test_xor_zero();
+    total++; passed += test_add_one_to_inc();
+    total++; passed += test_sub_one_to_dec();
     total++; passed += test_optimization_stats();
     total++; passed += test_report_generation();
     total++; passed += test_context_lifecycle();

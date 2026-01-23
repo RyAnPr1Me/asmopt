@@ -15,6 +15,8 @@ Tests individual peephole optimization patterns:
 - Pattern 7: OR zero elimination
 - Pattern 8: XOR zero immediate elimination
 - Pattern 9: AND with -1 elimination
+- Pattern 10: Add 1 to inc optimization (NEW)
+- Pattern 11: Sub 1 to dec optimization (NEW)
 - Optimization statistics tracking
 - Report generation
 - Context lifecycle management
@@ -63,7 +65,7 @@ ctest --output-on-failure --verbose
 ## Test Coverage
 
 The test suite achieves 100% coverage of:
-- All 9 peephole optimization patterns
+- All 11 peephole optimization patterns
 - All public API functions
 - IR generation and parsing
 - CFG construction
@@ -76,12 +78,12 @@ The test suite achieves 100% coverage of:
 ## Expected Results
 
 All tests should pass:
-- 13 unit tests in test_peephole
+- 15 unit tests in test_peephole
 - 8 integration tests in test_integration
-- Total: 21 tests
+- Total: 23 tests
 
 ```
-Test Results: 13/13 tests passed (unit)
+Test Results: 15/15 tests passed (unit)
 Test Results: 8/8 tests passed (integration)
 100% tests passed, 0 tests failed out of 2
 ```

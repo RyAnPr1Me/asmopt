@@ -950,6 +950,78 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
         }
     }
     
+    /* Pattern 10: add rax, 1 -> inc rax (smaller encoding) */
+    if (strcmp(base_mnemonic, "add") == 0 && has_two_ops) {
+        if (asmopt_is_immediate_one(src, syntax)) {
+            bool dest_reg = asmopt_is_register(dest, syntax);
+            if (dest_reg) {
+                char inc_name[8];
+                if (suffix) {
+                    snprintf(inc_name, sizeof(inc_name), "inc%c", suffix);
+                } else {
+                    snprintf(inc_name, sizeof(inc_name), "inc");
+                }
+                char* trimmed_comment = asmopt_trim_comment(comment);
+                size_t new_len = strlen(indent) + strlen(inc_name) + strlen(spacing) + strlen(dest) + 2;
+                if (!asmopt_is_blank(trimmed_comment)) {
+                    new_len += strlen(trimmed_comment) + 1;
+                }
+                char* newline = malloc(new_len + 1);
+                if (newline) {
+                    if (!asmopt_is_blank(trimmed_comment)) {
+                        snprintf(newline, new_len + 1, "%s%s%s%s %s", 
+                                indent, inc_name, spacing, dest, trimmed_comment);
+                    } else {
+                        snprintf(newline, new_len + 1, "%s%s%s%s", 
+                                indent, inc_name, spacing, dest);
+                    }
+                    asmopt_record_optimization(ctx, line_no, "add_one_to_inc", line, newline);
+                    asmopt_store_optimized_line(ctx, newline);
+                    free(newline);
+                    *replaced = true;
+                }
+                free(trimmed_comment);
+                goto cleanup;
+            }
+        }
+    }
+    
+    /* Pattern 11: sub rax, 1 -> dec rax (smaller encoding) */
+    if (strcmp(base_mnemonic, "sub") == 0 && has_two_ops) {
+        if (asmopt_is_immediate_one(src, syntax)) {
+            bool dest_reg = asmopt_is_register(dest, syntax);
+            if (dest_reg) {
+                char dec_name[8];
+                if (suffix) {
+                    snprintf(dec_name, sizeof(dec_name), "dec%c", suffix);
+                } else {
+                    snprintf(dec_name, sizeof(dec_name), "dec");
+                }
+                char* trimmed_comment = asmopt_trim_comment(comment);
+                size_t new_len = strlen(indent) + strlen(dec_name) + strlen(spacing) + strlen(dest) + 2;
+                if (!asmopt_is_blank(trimmed_comment)) {
+                    new_len += strlen(trimmed_comment) + 1;
+                }
+                char* newline = malloc(new_len + 1);
+                if (newline) {
+                    if (!asmopt_is_blank(trimmed_comment)) {
+                        snprintf(newline, new_len + 1, "%s%s%s%s %s", 
+                                indent, dec_name, spacing, dest, trimmed_comment);
+                    } else {
+                        snprintf(newline, new_len + 1, "%s%s%s%s", 
+                                indent, dec_name, spacing, dest);
+                    }
+                    asmopt_record_optimization(ctx, line_no, "sub_one_to_dec", line, newline);
+                    asmopt_store_optimized_line(ctx, newline);
+                    free(newline);
+                    *replaced = true;
+                }
+                free(trimmed_comment);
+                goto cleanup;
+            }
+        }
+    }
+    
     /* No optimization applied, store original */
     asmopt_store_optimized_line(ctx, line);
 
