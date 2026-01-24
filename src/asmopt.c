@@ -737,6 +737,10 @@ static long asmopt_parse_immediate(const char* operand, const char* syntax, bool
     if (*op == '\0') {
         return 0;
     }
+    int base = 10;
+    if (syntax && strcmp(syntax, "att") == 0 && op[0] == '0' && op[1] != 'x' && isdigit((unsigned char)op[1])) {
+        base = 8;
+    }
     char* end = NULL;
     long value = 0;
     if (asmopt_starts_with(op, "0x")) {
@@ -757,7 +761,7 @@ static long asmopt_parse_immediate(const char* operand, const char* syntax, bool
             }
             return value;
         } else {
-            value = strtol(op, &end, 10);
+            value = strtol(op, &end, base);
         }
     }
     if (end != op && *end == '\0') {
@@ -1985,7 +1989,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
     /* bsr -> lzcnt not applied: not semantically equivalent. */
 
     /* Pattern 3: imul/mul rax, 1 -> remove (identity) */
-    if ((strcmp(base_mnemonic, "imul") == 0 || strcmp(base_mnemonic, "mul") == 0) && has_two_ops) {
+    if (strcmp(base_mnemonic, "imul") == 0 && has_two_ops) {
         if (dest_reg && asmopt_is_immediate_one(src, syntax)) {
             asmopt_handle_identity_removal(ctx, line_no, "mul_by_one", line, comment, indent, removed);
             goto cleanup;
