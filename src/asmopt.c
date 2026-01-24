@@ -13,7 +13,7 @@
  *   5. Reporting: Tracks and reports all optimizations applied
  * 
  * Key Features:
- *   - 25 peephole optimization patterns
+ *   - 27 peephole optimization patterns
  *   - Support for Intel and AT&T syntax
  *   - Comment and label preservation
  *   - Detailed optimization reporting
@@ -108,6 +108,7 @@ struct asmopt_context {
     size_t opt_event_capacity;
     /* Flag to enable hot loop alignment when hot_align option is set */
     bool insert_hot_align;
+    bool skip_next_no_removal;
 };
 
 /* Instruction mnemonics that can have AT&T syntax suffixes (b, w, l, q) */
@@ -1013,12 +1014,128 @@ static void asmopt_handle_identity_removal(asmopt_context* ctx, size_t line_no, 
     *removed = true;
 }
 
+static bool asmopt_is_mov_no_comment(const char* line, const char* syntax, char** dest, char** src) {
+    if (dest) {
+        *dest = NULL;
+    }
+    if (src) {
+        *src = NULL;
+    }
+    if (!line) {
+        return false;
+    }
+    char* code = NULL;
+    char* comment = NULL;
+    asmopt_split_comment(line, &code, &comment);
+    if (!code || !comment) {
+        free(code);
+        free(comment);
+        return false;
+    }
+    if (!asmopt_is_blank(comment)) {
+        free(code);
+        free(comment);
+        return false;
+    }
+    if (asmopt_is_directive_or_label(code)) {
+        free(code);
+        free(comment);
+        return false;
+    }
+    char* indent = NULL;
+    char* mnemonic = NULL;
+    char* spacing = NULL;
+    char* operands = NULL;
+    if (!asmopt_parse_instruction(code, &indent, &mnemonic, &spacing, &operands)) {
+        free(code);
+        free(comment);
+        return false;
+    }
+    char mnemonic_lower[32];
+    size_t mlen = strlen(mnemonic);
+    if (mlen >= sizeof(mnemonic_lower)) {
+        mlen = sizeof(mnemonic_lower) - 1;
+    }
+    for (size_t i = 0; i < mlen; i++) {
+        mnemonic_lower[i] = (char)tolower((unsigned char)mnemonic[i]);
+    }
+    mnemonic_lower[mlen] = '\0';
+    char base_mnemonic[32] = {0};
+    size_t mlen_actual = strlen(mnemonic_lower);
+    bool can_have_suffix = false;
+    for (size_t i = 0; i < SUFFIX_MNEMONICS_COUNT; i++) {
+        size_t base_len = strlen(SUFFIX_MNEMONICS[i]);
+        if (mlen_actual == base_len + 1 && strncmp(mnemonic_lower, SUFFIX_MNEMONICS[i], base_len) == 0) {
+            can_have_suffix = true;
+            break;
+        }
+    }
+    if (can_have_suffix && mlen_actual >= 4) {
+        char last_char = mnemonic_lower[mlen_actual - 1];
+        if (last_char == 'b' || last_char == 'w' || last_char == 'l' || last_char == 'q') {
+            strncpy(base_mnemonic, mnemonic_lower, mlen_actual - 1);
+            base_mnemonic[mlen_actual - 1] = '\0';
+        } else {
+            strcpy(base_mnemonic, mnemonic_lower);
+        }
+    } else {
+        strcpy(base_mnemonic, mnemonic_lower);
+    }
+    bool result = false;
+    char* op1 = NULL;
+    char* op2 = NULL;
+    char* pre_space = NULL;
+    char* post_space = NULL;
+    bool has_two_ops = asmopt_parse_operands(operands, &op1, &op2, &pre_space, &post_space);
+    if (has_two_ops && strcmp(base_mnemonic, "mov") == 0) {
+        const char* dest_op = NULL;
+        const char* src_op = NULL;
+        if (syntax && strcmp(syntax, "att") == 0) {
+            src_op = op1;
+            dest_op = op2;
+        } else {
+            dest_op = op1;
+            src_op = op2;
+        }
+        if (dest_op && src_op && asmopt_is_register(dest_op, syntax) && asmopt_is_register(src_op, syntax)) {
+            if (dest) {
+                *dest = asmopt_strdup(dest_op);
+            }
+            if (src) {
+                *src = asmopt_strdup(src_op);
+            }
+            result = true;
+        }
+    }
+    free(op1);
+    free(op2);
+    free(pre_space);
+    free(post_space);
+    free(indent);
+    free(mnemonic);
+    free(spacing);
+    free(operands);
+    free(code);
+    free(comment);
+    if (!result) {
+        if (dest && *dest) {
+            free(*dest);
+            *dest = NULL;
+        }
+        if (src && *src) {
+            free(*src);
+            *src = NULL;
+        }
+    }
+    return result;
+}
+
 static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char* line, const char* syntax, bool* replaced, bool* removed) {
     /*
      * Peephole Optimizer - Pattern Matching Engine
      * 
-     * This function implements 25 optimization patterns for x86-64 assembly:
-     * (8 identity + 1 redundant move + 12 replacements: 2,4,10,11,13-20 + 2 control-flow
+     * This function implements 27 optimization patterns for x86-64 assembly:
+     * (8 identity + 1 redundant move + 14 replacements: 2,4,10,11,13-20,26-27 + 2 control-flow
      *  + 1 cache-aware + 1 architecture-aware)
      * 
      * Identity/No-op Eliminations (8 patterns):
@@ -1052,6 +1169,12 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
      *   Pattern 21: jmp next_label         → (removed)        - Fallthrough jump
      *   Pattern 25: jcc label + jmp next   → j!cc next        - Branch inversion
      * 
+     * Dead code elimination (1 pattern):
+     *   Pattern 26: mov r1, r2 + mov r1, r3 → mov r1, r3        - Dead store
+     * 
+     * Scheduling (1 pattern):
+     *   Pattern 27: mov r1, r2 + mov r3, r4 → mov r3, r4 + mov r1, r2 - Move hoist
+     * 
      * Cache-aware (1 pattern):
      *   Pattern 22: .hot_loop:             → .align 64 + label - Align hot loop headers
      * 
@@ -1065,6 +1188,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
      */
     *replaced = false;
     *removed = false;
+    ctx->skip_next_no_removal = false;
     char* code = NULL;
     char* comment = NULL;
     asmopt_split_comment(line, &code, &comment);
@@ -1217,6 +1341,68 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
             *replaced = false;
             asmopt_handle_identity_removal(ctx, line_no, "redundant_lea", line, comment, indent, removed);
             goto cleanup;
+        }
+    }
+
+    /* Pattern 26: mov rax, rbx / mov rax, rcx -> remove dead store */
+    if (strcmp(base_mnemonic, "mov") == 0 && has_two_ops && dest_reg && src_reg) {
+        if (line_no < ctx->original_count) {
+            const char* next_line = ctx->original_lines[line_no];
+            char* next_dest = NULL;
+            char* next_src = NULL;
+            if (asmopt_is_mov_no_comment(next_line, syntax, &next_dest, &next_src)) {
+                bool dead_store = next_dest && asmopt_casecmp(dest, next_dest) == 0 &&
+                                  next_src && asmopt_casecmp(src, next_src) != 0;
+                if (dead_store) {
+                    size_t combo_len = strlen(line) + strlen(next_line) + 2;
+                    char* combined = malloc(combo_len + 1);
+                    if (combined) {
+                        snprintf(combined, combo_len + 1, "%s\n%s", line, next_line);
+                        asmopt_record_optimization(ctx, line_no, "dead_store_move", combined, next_line);
+                        free(combined);
+                    } else {
+                        asmopt_record_optimization(ctx, line_no, "dead_store_move", line, next_line);
+                    }
+                    asmopt_record_optimization(ctx, line_no + 1, "dead_store_move", next_line, next_line);
+                    asmopt_store_optimized_line(ctx, next_line);
+                    *replaced = true;
+                    *removed = true;
+                    free(next_dest);
+                    free(next_src);
+                    goto cleanup;
+                }
+            }
+            free(next_dest);
+            free(next_src);
+        }
+    }
+
+    /* Pattern 27: mov rax, rbx / mov rcx, rdx -> reorder for scheduling */
+    if (strcmp(base_mnemonic, "mov") == 0 && has_two_ops && dest_reg && src_reg) {
+        if (line_no < ctx->original_count) {
+            const char* next_line = ctx->original_lines[line_no];
+            char* next_dest = NULL;
+            char* next_src = NULL;
+            if (asmopt_is_mov_no_comment(next_line, syntax, &next_dest, &next_src)) {
+                bool independent = next_dest && next_src &&
+                                   asmopt_casecmp(dest, next_dest) != 0 &&
+                                   asmopt_casecmp(dest, next_src) != 0 &&
+                                   asmopt_casecmp(src, next_dest) != 0 &&
+                                   asmopt_casecmp(src, next_src) != 0;
+                if (independent) {
+                    asmopt_record_optimization(ctx, line_no, "schedule_swap_move", line, next_line);
+                    asmopt_store_optimized_line(ctx, next_line);
+                    asmopt_store_optimized_line(ctx, line);
+                    *replaced = true;
+                    *removed = true;
+                    ctx->skip_next_no_removal = true;
+                    free(next_dest);
+                    free(next_src);
+                    goto cleanup;
+                }
+            }
+            free(next_dest);
+            free(next_src);
         }
     }
 
@@ -2615,6 +2801,10 @@ int asmopt_optimize(asmopt_context* ctx) {
         asmopt_peephole_line(ctx, i + 1, ctx->original_lines[i], syntax, &replaced, &removed);
         if (replaced && removed) {
             i++;
+            if (ctx->skip_next_no_removal) {
+                ctx->skip_next_no_removal = false;
+                continue;
+            }
         }
         if (replaced) {
             ctx->stats.replacements += 1;

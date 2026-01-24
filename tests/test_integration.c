@@ -349,6 +349,10 @@ static int test_comprehensive_report() {
         "test rbx, rbx\n"
         "jz .skip_bsf\n"
         "bsf rax, rbx\n"    /* Pattern 23 */
+        "mov r15, r14\n"    /* Pattern 26 */
+        "mov r15, r13\n"    /* Pattern 26 */
+        "mov r10, r11\n"    /* Pattern 27 */
+        "mov r12, r9\n"     /* Pattern 27 */
         "jne .branch_true\n"
         "jmp .branch_false\n"
         ".branch_true:\n"
@@ -386,10 +390,12 @@ static int test_comprehensive_report() {
     TEST_ASSERT(strstr(report, "hot_loop_align") != NULL, "Pattern 22 missing");
     TEST_ASSERT(strstr(report, "bsf_to_tzcnt") != NULL, "Pattern 23 missing");
     TEST_ASSERT(strstr(report, "invert_conditional_jump") != NULL, "Pattern 25 missing");
+    TEST_ASSERT(strstr(report, "dead_store_move") != NULL, "Pattern 26 missing");
+    TEST_ASSERT(strstr(report, "schedule_swap_move") != NULL, "Pattern 27 missing");
     
-    /* 15 replacements correspond to the list in test_complete_function (including bsf/tzcnt) plus branch inversion; 11 removals include lea + branch inversion. */
-    TEST_ASSERT(strstr(report, "Replacements: 15") != NULL, "Wrong replacement count");
-    TEST_ASSERT(strstr(report, "Removals: 11") != NULL, "Wrong removal count");
+    /* 16 replacements correspond to the list in test_complete_function (including bsf/tzcnt) plus branch inversion and scheduling; 12 removals include lea + branch inversion + dead store. */
+    TEST_ASSERT(strstr(report, "Replacements: 16") != NULL, "Wrong replacement count");
+    TEST_ASSERT(strstr(report, "Removals: 12") != NULL, "Wrong removal count");
     
     free(report);
     asmopt_destroy(ctx);
