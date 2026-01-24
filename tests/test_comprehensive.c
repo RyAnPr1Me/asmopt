@@ -728,24 +728,7 @@ static int test_bsf_to_tzcnt() {
     TEST_PASS("test_bsf_to_tzcnt");
 }
 
-/* Test bsr to lzcnt optimization on Zen */
-static int test_bsr_to_lzcnt() {
-    asmopt_context* ctx = asmopt_create("x86-64");
-    TEST_ASSERT(ctx != NULL, "Failed to create context");
-    asmopt_set_target_cpu(ctx, "zen1");
-    
-    const char* input = "bsr rax, rbx\n";
-    asmopt_parse_string(ctx, input);
-    asmopt_optimize(ctx);
-    
-    char* output = asmopt_generate_assembly(ctx);
-    TEST_ASSERT(output != NULL, "Failed to generate output");
-    TEST_ASSERT(strstr(output, "lzcnt rax, rbx") != NULL, "bsr not converted to lzcnt");
-    
-    free(output);
-    asmopt_destroy(ctx);
-    TEST_PASS("test_bsr_to_lzcnt");
-}
+/* Test Pattern 24 removed: bsr -> lzcnt not applied */
 
 int main() {
     int passed = 0;
@@ -787,7 +770,6 @@ int main() {
     total++; passed += test_fallthrough_jump_optimization();
     total++; passed += test_hot_loop_alignment();
     total++; passed += test_bsf_to_tzcnt();
-    total++; passed += test_bsr_to_lzcnt();
     
     printf("\n========================================\n");
     printf("Test Results: %d/%d tests passed\n", passed, total);

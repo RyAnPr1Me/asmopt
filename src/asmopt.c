@@ -787,6 +787,98 @@ static bool asmopt_is_target_zen(asmopt_context* ctx) {
            strncasecmp(ctx->target_cpu, "zen", prefix_len) == 0;
 }
 
+static bool asmopt_is_zero_guarded(asmopt_context* ctx, size_t line_no, const char* src, const char* syntax) {
+    if (!ctx || !src || line_no < 3) {
+        return false;
+    }
+    size_t jump_index = line_no - 2;
+    size_t test_index = line_no - 3;
+    if (jump_index >= ctx->original_count || test_index >= ctx->original_count) {
+        return false;
+    }
+    char* jump_code = NULL;
+    char* jump_comment = NULL;
+    asmopt_split_comment(ctx->original_lines[jump_index], &jump_code, &jump_comment);
+    if (!jump_code || asmopt_is_directive_or_label(jump_code)) {
+        free(jump_code);
+        free(jump_comment);
+        return false;
+    }
+    char* jump_indent = NULL;
+    char* jump_mnemonic = NULL;
+    char* jump_spacing = NULL;
+    char* jump_operands = NULL;
+    bool jump_ok = asmopt_parse_instruction(jump_code, &jump_indent, &jump_mnemonic, &jump_spacing, &jump_operands);
+    bool is_jump = false;
+    if (jump_ok && jump_mnemonic) {
+        is_jump = asmopt_casecmp(jump_mnemonic, "jz") == 0 || asmopt_casecmp(jump_mnemonic, "je") == 0;
+    }
+    free(jump_indent);
+    free(jump_mnemonic);
+    free(jump_spacing);
+    free(jump_operands);
+    free(jump_code);
+    free(jump_comment);
+    if (!is_jump) {
+        return false;
+    }
+    char* test_code = NULL;
+    char* test_comment = NULL;
+    asmopt_split_comment(ctx->original_lines[test_index], &test_code, &test_comment);
+    if (!test_code || asmopt_is_directive_or_label(test_code)) {
+        free(test_code);
+        free(test_comment);
+        return false;
+    }
+    char* test_indent = NULL;
+    char* test_mnemonic = NULL;
+    char* test_spacing = NULL;
+    char* test_operands = NULL;
+    bool test_ok = asmopt_parse_instruction(test_code, &test_indent, &test_mnemonic, &test_spacing, &test_operands);
+    bool guarded = false;
+    if (test_ok && test_mnemonic && test_operands) {
+        char* op1 = NULL;
+        char* op2 = NULL;
+        char* pre = NULL;
+        char* post = NULL;
+        if (asmopt_parse_operands(test_operands, &op1, &op2, &pre, &post)) {
+            if (asmopt_casecmp(test_mnemonic, "test") == 0) {
+                bool reg1 = asmopt_is_register(op1, syntax);
+                bool reg2 = asmopt_is_register(op2, syntax);
+                guarded = reg1 && reg2 &&
+                          asmopt_casecmp(op1, src) == 0 &&
+                          asmopt_casecmp(op2, src) == 0;
+            } else if (asmopt_casecmp(test_mnemonic, "cmp") == 0) {
+                const char* dest = NULL;
+                const char* cmp_src = NULL;
+                if (syntax && strcmp(syntax, "att") == 0) {
+                    cmp_src = op1;
+                    dest = op2;
+                } else {
+                    dest = op1;
+                    cmp_src = op2;
+                }
+                if (dest && cmp_src) {
+                    guarded = asmopt_is_register(dest, syntax) &&
+                              asmopt_casecmp(dest, src) == 0 &&
+                              asmopt_is_immediate_zero(cmp_src, syntax);
+                }
+            }
+        }
+        free(op1);
+        free(op2);
+        free(pre);
+        free(post);
+    }
+    free(test_indent);
+    free(test_mnemonic);
+    free(test_spacing);
+    free(test_operands);
+    free(test_code);
+    free(test_comment);
+    return guarded;
+}
+
 static bool asmopt_is_power_of_two(long value) {
     return value > 0 && (value & (value - 1)) == 0;
 }
@@ -1443,8 +1535,9 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
         free(trimmed);
     }
 
-    /* Pattern 23: bsf reg, reg -> tzcnt reg, reg (Zen/BMI1) */
-    if (strcmp(base_mnemonic, "bsf") == 0 && has_two_ops && dest_reg && src_reg && asmopt_is_target_zen(ctx)) {
+    /* Pattern 23: bsf reg, reg -> tzcnt reg, reg (Zen/BMI1, guarded zero) */
+    if (strcmp(base_mnemonic, "bsf") == 0 && has_two_ops && dest_reg && src_reg && asmopt_is_target_zen(ctx) &&
+        asmopt_is_zero_guarded(ctx, line_no, src, syntax)) {
         char tzcnt_name[8];
         asmopt_build_suffixed_name(tzcnt_name, sizeof(tzcnt_name), "tzcnt", suffix);
         char* trimmed_comment = asmopt_trim_comment(comment);
@@ -1471,33 +1564,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
         goto cleanup;
     }
 
-    /* Pattern 24: bsr reg, reg -> lzcnt reg, reg (Zen/BMI1) */
-    if (strcmp(base_mnemonic, "bsr") == 0 && has_two_ops && dest_reg && src_reg && asmopt_is_target_zen(ctx)) {
-        char lzcnt_name[8];
-        asmopt_build_suffixed_name(lzcnt_name, sizeof(lzcnt_name), "lzcnt", suffix);
-        char* trimmed_comment = asmopt_trim_comment(comment);
-        size_t new_len = strlen(indent) + strlen(lzcnt_name) + strlen(spacing) +
-                         strlen(dest) + strlen(pre_space) + strlen(post_space) + strlen(src) + 2;
-        if (!asmopt_is_blank(trimmed_comment)) {
-            new_len += strlen(trimmed_comment) + 1;
-        }
-        char* newline = malloc(new_len + 1);
-        if (newline) {
-            if (!asmopt_is_blank(trimmed_comment)) {
-                snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s %s",
-                         indent, lzcnt_name, spacing, dest, pre_space, post_space, src, trimmed_comment);
-            } else {
-                snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s",
-                         indent, lzcnt_name, spacing, dest, pre_space, post_space, src);
-            }
-            asmopt_record_optimization(ctx, line_no, "bsr_to_lzcnt", line, newline);
-            asmopt_store_optimized_line(ctx, newline);
-            free(newline);
-            *replaced = true;
-        }
-        free(trimmed_comment);
-        goto cleanup;
-    }
+    /* Pattern 24 removed: bsr -> lzcnt is not semantically equivalent. */
 
     /* Pattern 3: imul/mul rax, 1 -> remove (identity) */
     if ((strcmp(base_mnemonic, "imul") == 0 || strcmp(base_mnemonic, "mul") == 0) && has_two_ops) {

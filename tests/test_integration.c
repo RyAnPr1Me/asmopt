@@ -53,8 +53,10 @@ static int test_complete_function() {
         ".hot_loop:\n"
         "    mov r13, r14     ; swap 1\n"
         "    mov r14, r13     ; swap 2\n"
+        "    test rbx, rbx\n"
+        "    jz .skip_bsf\n"
         "    bsf rax, rbx     ; zen pref\n"
-        "    bsr rcx, rdx     ; zen pref\n"
+        ".skip_bsf:\n"
         "    sub rax, rax     ; zero idiom\n"
         "    xor r15, r15     ; zero idiom - keep\n"
         "    mov rbx, 42      ; keep\n"
@@ -94,7 +96,6 @@ static int test_complete_function() {
     TEST_ASSERT(strstr(output, ".align 64") != NULL, "Hot loop not aligned");
     TEST_ASSERT(strstr(output, "mov r13, r14") != NULL, "Swap move not preserved");
     TEST_ASSERT(strstr(output, "tzcnt rax, rbx") != NULL, "bsf not converted to tzcnt");
-    TEST_ASSERT(strstr(output, "lzcnt rcx, rdx") != NULL, "bsr not converted to lzcnt");
     
     /* Verify non-optimizable kept */
     TEST_ASSERT(strstr(output, "xor r15, r15") != NULL, "Zero idiom removed");
@@ -103,10 +104,10 @@ static int test_complete_function() {
     
     size_t original, optimized, replacements, removals;
     asmopt_get_stats(ctx, &original, &optimized, &replacements, &removals);
-    /* 15 replacements: mov0/xor, imul/shl, add1/inc, sub1/dec, cmp0/test, or-self/test,
+    /* 14 replacements: mov0/xor, imul/shl, add1/inc, sub1/dec, cmp0/test, or-self/test,
        add-1/dec, sub-1/inc, and-self/test, cmp-self/test, and_zero/xor, sub-self/xor,
-       redundant move keep, plus bsf/tzcnt and bsr/lzcnt. */
-    TEST_ASSERT(replacements == 15, "Expected 15 replacements");
+       redundant move keep, plus bsf/tzcnt. */
+    TEST_ASSERT(replacements == 14, "Expected 14 replacements");
     /* 9 removals: redundant mov, imul-by-1, add/sub zero, shift zero, or zero, xor zero,
        and -1, fallthrough jump */
     TEST_ASSERT(removals == 9, "Expected 9 removals");
@@ -344,8 +345,10 @@ static int test_comprehensive_report() {
         "jmp .fall\n"
         ".fall:\n"          /* Pattern 21 */
         ".hot_loop:\n"      /* Pattern 22 */
+        "test rbx, rbx\n"
+        "jz .skip_bsf\n"
         "bsf rax, rbx\n"    /* Pattern 23 */
-        "bsr rcx, rdx\n";   /* Pattern 24 */
+        ".skip_bsf:\n";
     
     asmopt_parse_string(ctx, input);
     asmopt_optimize(ctx);
@@ -377,10 +380,9 @@ static int test_comprehensive_report() {
     TEST_ASSERT(strstr(report, "fallthrough_jump") != NULL, "Pattern 21 missing");
     TEST_ASSERT(strstr(report, "hot_loop_align") != NULL, "Pattern 22 missing");
     TEST_ASSERT(strstr(report, "bsf_to_tzcnt") != NULL, "Pattern 23 missing");
-    TEST_ASSERT(strstr(report, "bsr_to_lzcnt") != NULL, "Pattern 24 missing");
     
-    /* 15 replacements correspond to the list in test_complete_function (including bsf/tzcnt, bsr/lzcnt). */
-    TEST_ASSERT(strstr(report, "Replacements: 15") != NULL, "Wrong replacement count");
+    /* 14 replacements correspond to the list in test_complete_function (including bsf/tzcnt). */
+    TEST_ASSERT(strstr(report, "Replacements: 14") != NULL, "Wrong replacement count");
     TEST_ASSERT(strstr(report, "Removals: 9") != NULL, "Wrong removal count");
     
     free(report);
