@@ -13,7 +13,7 @@
  *   5. Reporting: Tracks and reports all optimizations applied
  * 
  * Key Features:
- *   - 11 peephole optimization patterns
+ *   - 24 peephole optimization patterns
  *   - Support for Intel and AT&T syntax
  *   - Comment and label preservation
  *   - Detailed optimization reporting
@@ -112,7 +112,7 @@ struct asmopt_context {
 
 /* Instruction mnemonics that can have AT&T syntax suffixes (b, w, l, q) */
 static const char* const SUFFIX_MNEMONICS[] = {
-    "mov", "add", "sub", "xor", "and", "or", "cmp", "test", 
+    "mov", "lea", "add", "sub", "xor", "and", "or", "cmp", "test", 
     "shl", "shr", "sal", "sar"
 };
 static const size_t SUFFIX_MNEMONICS_COUNT = sizeof(SUFFIX_MNEMONICS) / sizeof(SUFFIX_MNEMONICS[0]);
@@ -771,6 +771,94 @@ static bool asmopt_is_immediate_minus_one(const char* operand, const char* synta
     return success && value == -1;
 }
 
+/* Check if displacement represents zero (empty is zero for AT&T base-only syntax). */
+static bool asmopt_is_zero_displacement(const char* value) {
+    char* trimmed = asmopt_strip(value);
+    if (!trimmed) {
+        return false;
+    }
+    bool zero = false;
+    if (*trimmed == '\0') {
+        /* Empty displacement in AT&T syntax implies zero. */
+        zero = true;
+    } else {
+        bool success = false;
+        long disp = asmopt_parse_immediate(trimmed, NULL, &success);
+        zero = success && disp == 0;
+    }
+    free(trimmed);
+    return zero;
+}
+
+/* Detect LEA identity: src memory uses base == dest with zero displacement (Intel or AT&T). */
+static bool asmopt_is_identity_lea(const char* src, const char* dest, const char* syntax) {
+    if (!src || !dest || !asmopt_is_register(dest, syntax)) {
+        return false;
+    }
+    char* trimmed = asmopt_strip(src);
+    if (!trimmed) {
+        return false;
+    }
+    bool matches = false;
+    if (syntax && strcmp(syntax, "att") == 0) {
+        if (!strchr(trimmed, '(')) {
+            free(trimmed);
+            return false;
+        }
+        const char* open = strchr(trimmed, '(');
+        if (open) {
+            const char* close = strchr(open + 1, ')');
+            if (close) {
+                const char* tail = close + 1;
+                while (*tail && isspace((unsigned char)*tail)) {
+                    tail++;
+                }
+                if (*tail == '\0') {
+                    size_t disp_len = (size_t)(open - trimmed);
+                    char* disp = malloc(disp_len + 1);
+                    if (disp) {
+                        memcpy(disp, trimmed, disp_len);
+                        disp[disp_len] = '\0';
+                        if (asmopt_is_zero_displacement(disp)) {
+                            size_t len = (size_t)(close - (open + 1));
+                            char* base = malloc(len + 1);
+                            if (base) {
+                                memcpy(base, open + 1, len);
+                                base[len] = '\0';
+                                char* inner = asmopt_strip(base);
+                                if (inner) {
+                                    matches = asmopt_casecmp(inner, dest) == 0;
+                                }
+                                free(inner);
+                                free(base);
+                            }
+                        }
+                        free(disp);
+                    }
+                }
+            }
+        }
+    } else {
+        size_t len = strlen(trimmed);
+        if (len >= 2 && trimmed[0] == '[' && trimmed[len - 1] == ']') {
+            size_t inner_len = len - 2;
+            char* base = malloc(inner_len + 1);
+            if (base) {
+                memcpy(base, trimmed + 1, inner_len);
+                base[inner_len] = '\0';
+                char* inner = asmopt_strip(base);
+                if (inner) {
+                    matches = asmopt_casecmp(inner, dest) == 0;
+                }
+                free(inner);
+                free(base);
+            }
+        }
+    }
+    free(trimmed);
+    return matches;
+}
+
 static void asmopt_build_suffixed_name(char* buffer, size_t size, const char* base, char suffix) {
     if (suffix != '\0') {
         snprintf(buffer, size, "%s%c", base, suffix);
@@ -924,11 +1012,11 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
     /*
      * Peephole Optimizer - Pattern Matching Engine
      * 
-     * This function implements 23 optimization patterns for x86-64 assembly:
-     * (7 identity + 1 redundant move + 13 replacements: 2,4,10,11,13-20 + 1 control-flow
+     * This function implements 24 optimization patterns for x86-64 assembly:
+     * (8 identity + 1 redundant move + 13 replacements: 2,4,10,11,13-20 + 1 control-flow
      *  + 1 cache-aware + 1 architecture-aware)
      * 
-     * Identity/No-op Eliminations (7 patterns):
+     * Identity/No-op Eliminations (8 patterns):
      *   Pattern 1: mov rax, rax            → (removed)        - Redundant self-move
      *   Pattern 3: imul rax, 1             → (removed)        - Identity multiplication
      *   Pattern 5: add/sub rax, 0          → (removed)        - Identity addition/subtraction
@@ -936,6 +1024,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
      *   Pattern 7: or rax, 0               → (removed)        - Identity OR
      *   Pattern 8: xor rax, 0              → (removed)        - Identity XOR (immediate only)
      *   Pattern 9: and rax, -1             → (removed)        - Identity AND (all bits)
+     *   Pattern 24: lea rax, [rax]         → (removed)        - Redundant address calc
      * 
      * Redundant Move Elimination (1 pattern):
      *   Pattern 12: mov a, b + mov b, a    → mov a, b         - Remove redundant move
@@ -1112,6 +1201,15 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                 *replaced = true;
             }
             free(trimmed_comment);
+            goto cleanup;
+        }
+    }
+
+    /* Pattern 24: lea rax, [rax] -> remove (identity) */
+    if (strcmp(base_mnemonic, "lea") == 0 && has_two_ops) {
+        if (dest && src && asmopt_is_identity_lea(src, dest, syntax)) {
+            *replaced = false;
+            asmopt_handle_identity_removal(ctx, line_no, "redundant_lea", line, comment, indent, removed);
             goto cleanup;
         }
     }

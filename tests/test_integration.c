@@ -330,6 +330,7 @@ static int test_comprehensive_report() {
         "or r8, 0\n"        /* Pattern 7 */
         "xor r9, 0\n"       /* Pattern 8 */
         "and r10, -1\n"     /* Pattern 9 */
+        "lea r10, [r10]\n"  /* Pattern 24 */
         "add r11, 1\n"      /* Pattern 10 */
         "sub r12, 1\n"      /* Pattern 11 */
         "mov r13, r14\n"    /* Pattern 12 */
@@ -366,6 +367,7 @@ static int test_comprehensive_report() {
     TEST_ASSERT(strstr(report, "or_zero") != NULL, "Pattern 7 missing");
     TEST_ASSERT(strstr(report, "xor_zero") != NULL, "Pattern 8 missing");
     TEST_ASSERT(strstr(report, "and_minus_one") != NULL, "Pattern 9 missing");
+    TEST_ASSERT(strstr(report, "redundant_lea") != NULL, "Pattern 24 missing");
     TEST_ASSERT(strstr(report, "add_one_to_inc") != NULL, "Pattern 10 missing");
     TEST_ASSERT(strstr(report, "sub_one_to_dec") != NULL, "Pattern 11 missing");
     TEST_ASSERT(strstr(report, "redundant_move_pair") != NULL, "Pattern 12 missing");
@@ -381,9 +383,9 @@ static int test_comprehensive_report() {
     TEST_ASSERT(strstr(report, "hot_loop_align") != NULL, "Pattern 22 missing");
     TEST_ASSERT(strstr(report, "bsf_to_tzcnt") != NULL, "Pattern 23 missing");
     
-    /* 14 replacements correspond to the list in test_complete_function (including bsf/tzcnt). */
+    /* 14 replacements correspond to the list in test_complete_function (including bsf/tzcnt); 10 removals include lea. */
     TEST_ASSERT(strstr(report, "Replacements: 14") != NULL, "Wrong replacement count");
-    TEST_ASSERT(strstr(report, "Removals: 9") != NULL, "Wrong removal count");
+    TEST_ASSERT(strstr(report, "Removals: 10") != NULL, "Wrong removal count");
     
     free(report);
     asmopt_destroy(ctx);
