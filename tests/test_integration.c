@@ -23,6 +23,8 @@
 static int test_complete_function() {
     asmopt_context* ctx = asmopt_create("x86-64");
     TEST_ASSERT(ctx != NULL, "Failed to create context");
+    asmopt_set_option(ctx, "hot_align", "1");
+    asmopt_set_target_cpu(ctx, "zen3");
     
     const char* input = 
         ".text\n"
@@ -37,10 +39,27 @@ static int test_complete_function() {
         "    or r8, 0         ; identity\n"
         "    xor r9, 0        ; identity (not xor reg,reg)\n"
         "    and r10, -1      ; identity\n"
+        "    and r14, 0       ; zero idiom\n"
         "    add r11, 1       ; should become inc\n"
         "    sub r12, 1       ; should become dec\n"
-        "    xor r13, r13     ; zero idiom - keep\n"
-        "    mov r14, 42      ; keep\n"
+        "    cmp rsi, 0       ; zero compare\n"
+        "    or rdi, rdi      ; flag-only\n"
+        "    add r8, -1       ; negative add\n"
+        "    sub r9, -1       ; negative sub\n"
+        "    and rdx, rdx     ; flag-only\n"
+        "    cmp rcx, rcx     ; self-compare\n"
+        "    jmp .fallthrough\n"
+        ".fallthrough:\n"
+        ".hot_loop:\n"
+        "    mov r13, r14     ; swap 1\n"
+        "    mov r14, r13     ; swap 2\n"
+        "    test rbx, rbx\n"
+        "    jz .skip_bsf\n"
+        "    bsf rax, rbx     ; zen pref\n"
+        ".skip_bsf:\n"
+        "    sub rax, rax     ; zero idiom\n"
+        "    xor r15, r15     ; zero idiom - keep\n"
+        "    mov rbx, 42      ; keep\n"
         "    ret\n";
     
     asmopt_parse_string(ctx, input);
@@ -56,7 +75,6 @@ static int test_complete_function() {
     
     /* Verify optimizations applied */
     TEST_ASSERT(strstr(output, "mov rax, rax") == NULL, "Redundant mov not removed");
-    TEST_ASSERT(strstr(output, "xor rbx, rbx") != NULL, "mov 0 not converted to xor");
     TEST_ASSERT(strstr(output, "imul rcx, 1") == NULL, "Multiply by 1 not removed");
     TEST_ASSERT(strstr(output, "shl rdx, 4") != NULL, "Power of 2 multiply not converted");
     TEST_ASSERT(strstr(output, "add rsi, 0") == NULL, "Add zero not removed");
@@ -64,18 +82,35 @@ static int test_complete_function() {
     TEST_ASSERT(strstr(output, "or r8, 0") == NULL, "OR zero not removed");
     TEST_ASSERT(strstr(output, "xor r9, 0") == NULL, "XOR zero immediate not removed");
     TEST_ASSERT(strstr(output, "and r10, -1") == NULL, "AND -1 not removed");
+    TEST_ASSERT(strstr(output, "xor r14, r14") != NULL, "AND zero not converted to xor");
+    TEST_ASSERT(strstr(output, "xor rax, rax") != NULL, "sub self not converted to xor");
+    TEST_ASSERT(strstr(output, "test rsi, rsi") != NULL, "cmp zero not converted to test");
+    TEST_ASSERT(strstr(output, "test rdi, rdi") != NULL, "or self not converted to test");
+    TEST_ASSERT(strstr(output, "dec r8") != NULL, "add -1 not converted to dec");
+    TEST_ASSERT(strstr(output, "inc r9") != NULL, "sub -1 not converted to inc");
+    TEST_ASSERT(strstr(output, "test rdx, rdx") != NULL, "and self not converted to test");
+    TEST_ASSERT(strstr(output, "test rcx, rcx") != NULL, "cmp self not converted to test");
+    TEST_ASSERT(strstr(output, "jmp .fallthrough") == NULL, "Fallthrough jump not removed");
     TEST_ASSERT(strstr(output, "inc r11") != NULL, "add 1 not converted to inc");
     TEST_ASSERT(strstr(output, "dec r12") != NULL, "sub 1 not converted to dec");
+    TEST_ASSERT(strstr(output, ".align 64") != NULL, "Hot loop not aligned");
+    TEST_ASSERT(strstr(output, "mov r13, r14") != NULL, "Swap move not preserved");
+    TEST_ASSERT(strstr(output, "tzcnt rax, rbx") != NULL, "bsf not converted to tzcnt");
     
     /* Verify non-optimizable kept */
-    TEST_ASSERT(strstr(output, "xor r13, r13") != NULL, "Zero idiom removed");
-    TEST_ASSERT(strstr(output, "mov r14, 42") != NULL, "Valid mov removed");
+    TEST_ASSERT(strstr(output, "xor r15, r15") != NULL, "Zero idiom removed");
+    TEST_ASSERT(strstr(output, "mov rbx, 42") != NULL, "Valid mov removed");
     TEST_ASSERT(strstr(output, "ret") != NULL, "Return removed");
     
     size_t original, optimized, replacements, removals;
     asmopt_get_stats(ctx, &original, &optimized, &replacements, &removals);
-    TEST_ASSERT(replacements == 4, "Expected 4 replacements"); /* mov 0 -> xor, imul 16 -> shl, add 1 -> inc, sub 1 -> dec */
-    TEST_ASSERT(removals == 7, "Expected 7 removals");
+    /* 14 replacements: mov0/xor, imul/shl, add1/inc, sub1/dec, cmp0/test, or-self/test,
+       add-1/dec, sub-1/inc, and-self/test, cmp-self/test, and_zero/xor, sub-self/xor,
+       redundant move keep, plus bsf/tzcnt. */
+    TEST_ASSERT(replacements == 14, "Expected 14 replacements");
+    /* 9 removals: redundant mov, imul-by-1, add/sub zero, shift zero, or zero, xor zero,
+       and -1, fallthrough jump */
+    TEST_ASSERT(removals == 9, "Expected 9 removals");
     
     free(output);
     asmopt_destroy(ctx);
@@ -95,6 +130,7 @@ static int test_file_io() {
     
     asmopt_context* ctx = asmopt_create("x86-64");
     TEST_ASSERT(ctx != NULL, "Failed to create context");
+    asmopt_set_option(ctx, "hot_align", "1");
     
     int result = asmopt_parse_file(ctx, test_file);
     TEST_ASSERT(result == 0, "Failed to parse file");
@@ -281,6 +317,8 @@ static int test_edge_cases() {
 static int test_comprehensive_report() {
     asmopt_context* ctx = asmopt_create("x86-64");
     TEST_ASSERT(ctx != NULL, "Failed to create context");
+    asmopt_set_option(ctx, "hot_align", "1");
+    asmopt_set_target_cpu(ctx, "zen3");
     
     const char* input = 
         "mov rax, rax\n"    /* Pattern 1 */
@@ -293,7 +331,24 @@ static int test_comprehensive_report() {
         "xor r9, 0\n"       /* Pattern 8 */
         "and r10, -1\n"     /* Pattern 9 */
         "add r11, 1\n"      /* Pattern 10 */
-        "sub r12, 1\n";     /* Pattern 11 */
+        "sub r12, 1\n"      /* Pattern 11 */
+        "mov r13, r14\n"    /* Pattern 12 */
+        "mov r14, r13\n"    /* Pattern 12 */
+        "sub r15, r15\n"    /* Pattern 13 */
+        "and rax, 0\n"      /* Pattern 14 */
+        "cmp rbx, 0\n"      /* Pattern 15 */
+        "or rcx, rcx\n"     /* Pattern 16 */
+        "add rdx, -1\n"     /* Pattern 17 */
+        "sub rsi, -1\n"     /* Pattern 18 */
+        "and r8, r8\n"      /* Pattern 19 */
+        "cmp r9, r9\n"      /* Pattern 20 */
+        "jmp .fall\n"
+        ".fall:\n"          /* Pattern 21 */
+        ".hot_loop:\n"      /* Pattern 22 */
+        "test rbx, rbx\n"
+        "jz .skip_bsf\n"
+        "bsf rax, rbx\n"    /* Pattern 23 */
+        ".skip_bsf:\n";
     
     asmopt_parse_string(ctx, input);
     asmopt_optimize(ctx);
@@ -313,9 +368,22 @@ static int test_comprehensive_report() {
     TEST_ASSERT(strstr(report, "and_minus_one") != NULL, "Pattern 9 missing");
     TEST_ASSERT(strstr(report, "add_one_to_inc") != NULL, "Pattern 10 missing");
     TEST_ASSERT(strstr(report, "sub_one_to_dec") != NULL, "Pattern 11 missing");
+    TEST_ASSERT(strstr(report, "redundant_move_pair") != NULL, "Pattern 12 missing");
+    TEST_ASSERT(strstr(report, "sub_self_to_xor") != NULL, "Pattern 13 missing");
+    TEST_ASSERT(strstr(report, "and_zero_to_xor") != NULL, "Pattern 14 missing");
+    TEST_ASSERT(strstr(report, "cmp_zero_to_test") != NULL, "Pattern 15 missing");
+    TEST_ASSERT(strstr(report, "or_self_to_test") != NULL, "Pattern 16 missing");
+    TEST_ASSERT(strstr(report, "add_minus_one_to_dec") != NULL, "Pattern 17 missing");
+    TEST_ASSERT(strstr(report, "sub_minus_one_to_inc") != NULL, "Pattern 18 missing");
+    TEST_ASSERT(strstr(report, "and_self_to_test") != NULL, "Pattern 19 missing");
+    TEST_ASSERT(strstr(report, "cmp_self_to_test") != NULL, "Pattern 20 missing");
+    TEST_ASSERT(strstr(report, "fallthrough_jump") != NULL, "Pattern 21 missing");
+    TEST_ASSERT(strstr(report, "hot_loop_align") != NULL, "Pattern 22 missing");
+    TEST_ASSERT(strstr(report, "bsf_to_tzcnt") != NULL, "Pattern 23 missing");
     
-    TEST_ASSERT(strstr(report, "Replacements: 4") != NULL, "Wrong replacement count");
-    TEST_ASSERT(strstr(report, "Removals: 7") != NULL, "Wrong removal count");
+    /* 14 replacements correspond to the list in test_complete_function (including bsf/tzcnt). */
+    TEST_ASSERT(strstr(report, "Replacements: 14") != NULL, "Wrong replacement count");
+    TEST_ASSERT(strstr(report, "Removals: 9") != NULL, "Wrong removal count");
     
     free(report);
     asmopt_destroy(ctx);

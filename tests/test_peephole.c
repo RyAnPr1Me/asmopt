@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include "../include/asmopt.h"
 
 #define TEST_ASSERT(condition, message) do { \
     if (!(condition)) { \
@@ -287,6 +288,242 @@ static int test_add_one_to_inc() {
     TEST_PASS("test_add_one_to_inc");
 }
 
+/* Test Pattern 12: redundant swap move elimination */
+static int test_swap_move_elimination() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "mov rax, rbx\nmov rbx, rax\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "mov rax, rbx") != NULL, "First mov should remain");
+    TEST_ASSERT(strstr(output, "mov rbx, rax") == NULL, "Second mov not removed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_swap_move_elimination");
+}
+
+/* Test Pattern 13: sub reg, reg -> xor reg, reg */
+static int test_sub_self_to_xor() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "sub rax, rax\nsub rbx, rcx\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "xor rax, rax") != NULL, "sub self not converted to xor");
+    TEST_ASSERT(strstr(output, "sub rbx, rcx") != NULL, "Non-self sub was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_sub_self_to_xor");
+}
+
+/* Test Pattern 14: and reg, 0 -> xor reg, reg */
+static int test_and_zero_to_xor() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "and rax, 0\nand rbx, 5\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "xor rax, rax") != NULL, "and 0 not converted to xor");
+    TEST_ASSERT(strstr(output, "and rbx, 5") != NULL, "and with non-zero was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_and_zero_to_xor");
+}
+
+/* Test Pattern 15: cmp reg, 0 -> test reg, reg */
+static int test_cmp_zero_to_test() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "cmp rax, 0\ncmp rbx, 7\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "test rax, rax") != NULL, "cmp 0 not converted to test");
+    TEST_ASSERT(strstr(output, "cmp rbx, 7") != NULL, "Non-zero cmp was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_cmp_zero_to_test");
+}
+
+/* Test Pattern 16: or reg, reg -> test reg, reg */
+static int test_or_self_to_test() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "or rax, rax\nor rbx, rcx\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "test rax, rax") != NULL, "or self not converted to test");
+    TEST_ASSERT(strstr(output, "or rbx, rcx") != NULL, "Non-self or was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_or_self_to_test");
+}
+
+/* Test Pattern 17: add reg, -1 -> dec reg */
+static int test_add_minus_one_to_dec() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "add rax, -1\nadd rbx, 2\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "dec rax") != NULL, "add -1 not converted to dec");
+    TEST_ASSERT(strstr(output, "add rbx, 2") != NULL, "Non -1 add was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_add_minus_one_to_dec");
+}
+
+/* Test Pattern 18: sub reg, -1 -> inc reg */
+static int test_sub_minus_one_to_inc() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "sub rax, -1\nsub rbx, 3\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "inc rax") != NULL, "sub -1 not converted to inc");
+    TEST_ASSERT(strstr(output, "sub rbx, 3") != NULL, "Non -1 sub was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_sub_minus_one_to_inc");
+}
+
+/* Test Pattern 19: and reg, reg -> test reg, reg */
+static int test_and_self_to_test() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "and rax, rax\nand rbx, rcx\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "test rax, rax") != NULL, "and self not converted to test");
+    TEST_ASSERT(strstr(output, "and rbx, rcx") != NULL, "Non-self and was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_and_self_to_test");
+}
+
+/* Test Pattern 20: cmp reg, reg -> test reg, reg */
+static int test_cmp_self_to_test() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "cmp rax, rax\ncmp rbx, rcx\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "test rax, rax") != NULL, "cmp self not converted to test");
+    TEST_ASSERT(strstr(output, "cmp rbx, rcx") != NULL, "Non-self cmp was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_cmp_self_to_test");
+}
+
+/* Test Pattern 21: fallthrough jump removal */
+static int test_fallthrough_jump_removal() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "jmp .next\n.next:\nmov rax, 0\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "jmp .next") == NULL, "Fallthrough jump not removed");
+    TEST_ASSERT(strstr(output, ".next:") != NULL, "Label removed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_fallthrough_jump_removal");
+}
+
+/* Test Pattern 22: hot loop alignment */
+static int test_hot_loop_alignment() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    asmopt_set_option(ctx, "hot_align", "1");
+    const char* input = ".hot_loop:\nadd rax, 1\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    char expected[32];
+    snprintf(expected, sizeof(expected), ".align %d", ASMOPT_HOT_LOOP_ALIGNMENT);
+    TEST_ASSERT(strstr(output, expected) != NULL, "Alignment directive missing");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_hot_loop_alignment");
+}
+
+/* Test Pattern 23: bsf to tzcnt on Zen */
+static int test_bsf_to_tzcnt() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    asmopt_set_target_cpu(ctx, "zen3");
+    
+    const char* input =
+        "test rbx, rbx\n"
+        "jz .skip\n"
+        "bsf rax, rbx\n"
+        ".skip:\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "tzcnt rax, rbx") != NULL, "bsf not converted to tzcnt");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_bsf_to_tzcnt");
+}
+
+/* Test Pattern 24 removed: bsr -> lzcnt not applied */
+
 /* Test Pattern 11: sub 1 to dec */
 static int test_sub_one_to_dec() {
     asmopt_context* ctx = asmopt_create("x86-64");
@@ -322,6 +559,18 @@ int main() {
     total++; passed += test_xor_zero();
     total++; passed += test_add_one_to_inc();
     total++; passed += test_sub_one_to_dec();
+    total++; passed += test_swap_move_elimination();
+    total++; passed += test_sub_self_to_xor();
+    total++; passed += test_and_zero_to_xor();
+    total++; passed += test_cmp_zero_to_test();
+    total++; passed += test_or_self_to_test();
+    total++; passed += test_add_minus_one_to_dec();
+    total++; passed += test_sub_minus_one_to_inc();
+    total++; passed += test_and_self_to_test();
+    total++; passed += test_cmp_self_to_test();
+    total++; passed += test_fallthrough_jump_removal();
+    total++; passed += test_hot_loop_alignment();
+    total++; passed += test_bsf_to_tzcnt();
     total++; passed += test_optimization_stats();
     total++; passed += test_report_generation();
     total++; passed += test_context_lifecycle();

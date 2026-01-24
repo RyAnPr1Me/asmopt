@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "../include/asmopt.h"
 
 #define TEST_ASSERT(condition, message) do { \
     if (!(condition)) { \
@@ -463,6 +464,276 @@ static int test_all_powers_of_2() {
     TEST_PASS("test_all_powers_of_2");
 }
 
+/* Test swap move elimination */
+static int test_swap_move_optimization() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input =
+        "mov rax, rbx\n"
+        "mov rbx, rax\n";
+    
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "mov rax, rbx") != NULL, "Swap move not preserved");
+    TEST_ASSERT(strstr(output, "mov rbx, rax") == NULL, "Second mov not removed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_swap_move_optimization");
+}
+
+/* Test sub self optimization */
+static int test_sub_self_optimization() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input =
+        "sub rax, rax\n"
+        "sub rbx, rcx\n";
+    
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "xor rax, rax") != NULL, "sub self not converted to xor");
+    TEST_ASSERT(strstr(output, "sub rbx, rcx") != NULL, "Non-self sub was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_sub_self_optimization");
+}
+
+/* Test and zero optimization */
+static int test_and_zero_optimization() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input =
+        "and rax, 0\n"
+        "and rbx, 7\n";
+    
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "xor rax, rax") != NULL, "and 0 not converted to xor");
+    TEST_ASSERT(strstr(output, "and rbx, 7") != NULL, "Non-zero and was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_and_zero_optimization");
+}
+
+/* Test cmp zero optimization */
+static int test_cmp_zero_optimization() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input =
+        "cmp rax, 0\n"
+        "cmp rbx, 3\n";
+    
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "test rax, rax") != NULL, "cmp 0 not converted to test");
+    TEST_ASSERT(strstr(output, "cmp rbx, 3") != NULL, "Non-zero cmp was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_cmp_zero_optimization");
+}
+
+/* Test or self optimization */
+static int test_or_self_optimization() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input =
+        "or rax, rax\n"
+        "or rbx, rcx\n";
+    
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "test rax, rax") != NULL, "or self not converted to test");
+    TEST_ASSERT(strstr(output, "or rbx, rcx") != NULL, "Non-self or was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_or_self_optimization");
+}
+
+/* Test add -1 optimization */
+static int test_add_minus_one_optimization() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input =
+        "add rax, -1\n"
+        "add rbx, 4\n";
+    
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "dec rax") != NULL, "add -1 not converted to dec");
+    TEST_ASSERT(strstr(output, "add rbx, 4") != NULL, "Non -1 add was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_add_minus_one_optimization");
+}
+
+/* Test sub -1 optimization */
+static int test_sub_minus_one_optimization() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input =
+        "sub rax, -1\n"
+        "sub rbx, 6\n";
+    
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "inc rax") != NULL, "sub -1 not converted to inc");
+    TEST_ASSERT(strstr(output, "sub rbx, 6") != NULL, "Non -1 sub was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_sub_minus_one_optimization");
+}
+
+/* Test and self optimization */
+static int test_and_self_optimization() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input =
+        "and rax, rax\n"
+        "and rbx, rcx\n";
+    
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "test rax, rax") != NULL, "and self not converted to test");
+    TEST_ASSERT(strstr(output, "and rbx, rcx") != NULL, "Non-self and was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_and_self_optimization");
+}
+
+/* Test cmp self optimization */
+static int test_cmp_self_optimization() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input =
+        "cmp rax, rax\n"
+        "cmp rbx, rcx\n";
+    
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "test rax, rax") != NULL, "cmp self not converted to test");
+    TEST_ASSERT(strstr(output, "cmp rbx, rcx") != NULL, "Non-self cmp was changed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_cmp_self_optimization");
+}
+
+/* Test fallthrough jump optimization */
+static int test_fallthrough_jump_optimization() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input =
+        "jmp .target\n"
+        ".target:\n"
+        "mov rax, 0\n";
+    
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "jmp .target") == NULL, "Fallthrough jump not removed");
+    TEST_ASSERT(strstr(output, ".target:") != NULL, "Target label removed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_fallthrough_jump_optimization");
+}
+
+/* Test hot loop alignment */
+static int test_hot_loop_alignment() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    asmopt_set_option(ctx, "hot_align", "1");
+    const char* input =
+        ".hot_loop:\n"
+        "add rax, 1\n";
+    
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    char expected[32];
+    snprintf(expected, sizeof(expected), ".align %d", ASMOPT_HOT_LOOP_ALIGNMENT);
+    TEST_ASSERT(strstr(output, expected) != NULL, "Alignment directive missing");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_hot_loop_alignment");
+}
+
+/* Test bsf to tzcnt optimization on Zen */
+static int test_bsf_to_tzcnt() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    asmopt_set_target_cpu(ctx, "zen4");
+    
+    const char* input =
+        "test rbx, rbx\n"
+        "jz .skip\n"
+        "bsf rax, rbx\n"
+        ".skip:\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "tzcnt rax, rbx") != NULL, "bsf not converted to tzcnt");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_bsf_to_tzcnt");
+}
+
+/* Test Pattern 24 removed: bsr -> lzcnt not applied */
+
 int main() {
     int passed = 0;
     int total = 0;
@@ -491,6 +762,18 @@ int main() {
     total++; passed += test_hex_immediates();
     total++; passed += test_memory_operands();
     total++; passed += test_all_powers_of_2();
+    total++; passed += test_swap_move_optimization();
+    total++; passed += test_sub_self_optimization();
+    total++; passed += test_and_zero_optimization();
+    total++; passed += test_cmp_zero_optimization();
+    total++; passed += test_or_self_optimization();
+    total++; passed += test_add_minus_one_optimization();
+    total++; passed += test_sub_minus_one_optimization();
+    total++; passed += test_and_self_optimization();
+    total++; passed += test_cmp_self_optimization();
+    total++; passed += test_fallthrough_jump_optimization();
+    total++; passed += test_hot_loop_alignment();
+    total++; passed += test_bsf_to_tzcnt();
     
     printf("\n========================================\n");
     printf("Test Results: %d/%d tests passed\n", passed, total);

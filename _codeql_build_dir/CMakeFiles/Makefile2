@@ -70,6 +70,7 @@ all: CMakeFiles/asmopt_lib.dir/all
 all: CMakeFiles/asmopt.dir/all
 all: CMakeFiles/test_peephole.dir/all
 all: CMakeFiles/test_integration.dir/all
+all: CMakeFiles/test_comprehensive.dir/all
 .PHONY : all
 
 # The main recursive "codegen" target.
@@ -77,6 +78,7 @@ codegen: CMakeFiles/asmopt_lib.dir/codegen
 codegen: CMakeFiles/asmopt.dir/codegen
 codegen: CMakeFiles/test_peephole.dir/codegen
 codegen: CMakeFiles/test_integration.dir/codegen
+codegen: CMakeFiles/test_comprehensive.dir/codegen
 .PHONY : codegen
 
 # The main recursive "preinstall" target.
@@ -88,6 +90,7 @@ clean: CMakeFiles/asmopt_lib.dir/clean
 clean: CMakeFiles/asmopt.dir/clean
 clean: CMakeFiles/test_peephole.dir/clean
 clean: CMakeFiles/test_integration.dir/clean
+clean: CMakeFiles/test_comprehensive.dir/clean
 .PHONY : clean
 
 #=============================================================================
@@ -161,7 +164,7 @@ CMakeFiles/asmopt.dir/clean:
 CMakeFiles/test_peephole.dir/all: CMakeFiles/asmopt_lib.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_peephole.dir/build.make CMakeFiles/test_peephole.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_peephole.dir/build.make CMakeFiles/test_peephole.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/runner/work/asmopt/asmopt/_codeql_build_dir/CMakeFiles --progress-num=7,8 "Built target test_peephole"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/runner/work/asmopt/asmopt/_codeql_build_dir/CMakeFiles --progress-num=9,10 "Built target test_peephole"
 .PHONY : CMakeFiles/test_peephole.dir/all
 
 # Build rule for subdir invocation for target.
@@ -178,7 +181,7 @@ test_peephole: CMakeFiles/test_peephole.dir/rule
 # codegen rule for target.
 CMakeFiles/test_peephole.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_peephole.dir/build.make CMakeFiles/test_peephole.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/runner/work/asmopt/asmopt/_codeql_build_dir/CMakeFiles --progress-num=7,8 "Finished codegen for target test_peephole"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/runner/work/asmopt/asmopt/_codeql_build_dir/CMakeFiles --progress-num=9,10 "Finished codegen for target test_peephole"
 .PHONY : CMakeFiles/test_peephole.dir/codegen
 
 # clean rule for target.
@@ -193,7 +196,7 @@ CMakeFiles/test_peephole.dir/clean:
 CMakeFiles/test_integration.dir/all: CMakeFiles/asmopt_lib.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_integration.dir/build.make CMakeFiles/test_integration.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_integration.dir/build.make CMakeFiles/test_integration.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/runner/work/asmopt/asmopt/_codeql_build_dir/CMakeFiles --progress-num=5,6 "Built target test_integration"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/runner/work/asmopt/asmopt/_codeql_build_dir/CMakeFiles --progress-num=7,8 "Built target test_integration"
 .PHONY : CMakeFiles/test_integration.dir/all
 
 # Build rule for subdir invocation for target.
@@ -210,13 +213,45 @@ test_integration: CMakeFiles/test_integration.dir/rule
 # codegen rule for target.
 CMakeFiles/test_integration.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_integration.dir/build.make CMakeFiles/test_integration.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/runner/work/asmopt/asmopt/_codeql_build_dir/CMakeFiles --progress-num=5,6 "Finished codegen for target test_integration"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/runner/work/asmopt/asmopt/_codeql_build_dir/CMakeFiles --progress-num=7,8 "Finished codegen for target test_integration"
 .PHONY : CMakeFiles/test_integration.dir/codegen
 
 # clean rule for target.
 CMakeFiles/test_integration.dir/clean:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_integration.dir/build.make CMakeFiles/test_integration.dir/clean
 .PHONY : CMakeFiles/test_integration.dir/clean
+
+#=============================================================================
+# Target rules for target CMakeFiles/test_comprehensive.dir
+
+# All Build rule for target.
+CMakeFiles/test_comprehensive.dir/all: CMakeFiles/asmopt_lib.dir/all
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_comprehensive.dir/build.make CMakeFiles/test_comprehensive.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_comprehensive.dir/build.make CMakeFiles/test_comprehensive.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/runner/work/asmopt/asmopt/_codeql_build_dir/CMakeFiles --progress-num=5,6 "Built target test_comprehensive"
+.PHONY : CMakeFiles/test_comprehensive.dir/all
+
+# Build rule for subdir invocation for target.
+CMakeFiles/test_comprehensive.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/runner/work/asmopt/asmopt/_codeql_build_dir/CMakeFiles 4
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_comprehensive.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/runner/work/asmopt/asmopt/_codeql_build_dir/CMakeFiles 0
+.PHONY : CMakeFiles/test_comprehensive.dir/rule
+
+# Convenience name for target.
+test_comprehensive: CMakeFiles/test_comprehensive.dir/rule
+.PHONY : test_comprehensive
+
+# codegen rule for target.
+CMakeFiles/test_comprehensive.dir/codegen:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_comprehensive.dir/build.make CMakeFiles/test_comprehensive.dir/codegen
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/runner/work/asmopt/asmopt/_codeql_build_dir/CMakeFiles --progress-num=5,6 "Finished codegen for target test_comprehensive"
+.PHONY : CMakeFiles/test_comprehensive.dir/codegen
+
+# clean rule for target.
+CMakeFiles/test_comprehensive.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_comprehensive.dir/build.make CMakeFiles/test_comprehensive.dir/clean
+.PHONY : CMakeFiles/test_comprehensive.dir/clean
 
 #=============================================================================
 # Special targets to cleanup operation of make.

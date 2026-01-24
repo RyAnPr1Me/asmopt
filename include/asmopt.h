@@ -7,6 +7,8 @@
 extern "C" {
 #endif
 
+#define ASMOPT_HOT_LOOP_ALIGNMENT 64
+
 typedef struct asmopt_context asmopt_context;
 
 asmopt_context* asmopt_create(const char* architecture);
