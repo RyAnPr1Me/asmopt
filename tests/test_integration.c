@@ -393,8 +393,8 @@ static int test_comprehensive_report() {
     TEST_ASSERT(strstr(report, "dead_store_move") != NULL, "Pattern 26 missing");
     TEST_ASSERT(strstr(report, "schedule_swap_move") != NULL, "Pattern 27 missing");
     
-    /* 16 replacements correspond to the list in test_complete_function (including bsf/tzcnt) plus branch inversion and scheduling; 12 removals include lea + branch inversion + dead store. */
-    TEST_ASSERT(strstr(report, "Replacements: 16") != NULL, "Wrong replacement count");
+    /* 17 replacements correspond to the list in test_complete_function (including bsf/tzcnt) plus branch inversion and move scheduling; 12 removals include lea + branch inversion + dead store. */
+    TEST_ASSERT(strstr(report, "Replacements: 17") != NULL, "Wrong replacement count");
     TEST_ASSERT(strstr(report, "Removals: 12") != NULL, "Wrong removal count");
     
     free(report);

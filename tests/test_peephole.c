@@ -585,13 +585,13 @@ static int test_schedule_swap_move() {
     asmopt_context* ctx = asmopt_create("x86-64");
     TEST_ASSERT(ctx != NULL, "Failed to create context");
     
-    const char* input = "mov rax, rbx\nmov rcx, rdx\n";
+    const char* input = "mov rax, rbx\nmov rcx, rdx\nmov r8, r9\n";
     asmopt_parse_string(ctx, input);
     asmopt_optimize(ctx);
     
     char* output = asmopt_generate_assembly(ctx);
     TEST_ASSERT(output != NULL, "Failed to generate output");
-    TEST_ASSERT(strstr(output, "mov rcx, rdx\nmov rax, rbx") != NULL, "Moves not reordered");
+    TEST_ASSERT(strstr(output, "mov rcx, rdx\nmov rax, rbx\nmov r8, r9") != NULL, "Moves not reordered");
     
     free(output);
     asmopt_destroy(ctx);

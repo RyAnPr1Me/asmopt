@@ -108,7 +108,7 @@ struct asmopt_context {
     size_t opt_event_capacity;
     /* Flag to enable hot loop alignment when hot_align option is set */
     bool insert_hot_align;
-    bool skip_next_no_removal;
+    bool skip_next_line;
 };
 
 /* Instruction mnemonics that can have AT&T syntax suffixes (b, w, l, q) */
@@ -1188,7 +1188,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
      */
     *replaced = false;
     *removed = false;
-    ctx->skip_next_no_removal = false;
+    ctx->skip_next_line = false;
     char* code = NULL;
     char* comment = NULL;
     asmopt_split_comment(line, &code, &comment);
@@ -1346,8 +1346,9 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
 
     /* Pattern 26: mov rax, rbx / mov rax, rcx -> remove dead store */
     if (strcmp(base_mnemonic, "mov") == 0 && has_two_ops && dest_reg && src_reg) {
-        if (line_no < ctx->original_count) {
-            const char* next_line = ctx->original_lines[line_no];
+        size_t next_index = line_no;
+        if (next_index < ctx->original_count) {
+            const char* next_line = ctx->original_lines[next_index];
             char* next_dest = NULL;
             char* next_src = NULL;
             if (asmopt_is_mov_no_comment(next_line, syntax, &next_dest, &next_src)) {
@@ -1363,10 +1364,10 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                     } else {
                         asmopt_record_optimization(ctx, line_no, "dead_store_move", line, next_line);
                     }
-                    asmopt_record_optimization(ctx, line_no + 1, "dead_store_move", next_line, next_line);
                     asmopt_store_optimized_line(ctx, next_line);
-                    *replaced = true;
                     *removed = true;
+                    *replaced = true;
+                    ctx->skip_next_line = true;
                     free(next_dest);
                     free(next_src);
                     goto cleanup;
@@ -1379,8 +1380,9 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
 
     /* Pattern 27: mov rax, rbx / mov rcx, rdx -> reorder for scheduling */
     if (strcmp(base_mnemonic, "mov") == 0 && has_two_ops && dest_reg && src_reg) {
-        if (line_no < ctx->original_count) {
-            const char* next_line = ctx->original_lines[line_no];
+        size_t next_index = line_no;
+        if (next_index < ctx->original_count) {
+            const char* next_line = ctx->original_lines[next_index];
             char* next_dest = NULL;
             char* next_src = NULL;
             if (asmopt_is_mov_no_comment(next_line, syntax, &next_dest, &next_src)) {
@@ -1394,8 +1396,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                     asmopt_store_optimized_line(ctx, next_line);
                     asmopt_store_optimized_line(ctx, line);
                     *replaced = true;
-                    *removed = true;
-                    ctx->skip_next_no_removal = true;
+                    ctx->skip_next_line = true;
                     free(next_dest);
                     free(next_src);
                     goto cleanup;
@@ -2799,18 +2800,16 @@ int asmopt_optimize(asmopt_context* ctx) {
         bool replaced = false;
         bool removed = false;
         asmopt_peephole_line(ctx, i + 1, ctx->original_lines[i], syntax, &replaced, &removed);
-        if (replaced && removed) {
-            i++;
-            if (ctx->skip_next_no_removal) {
-                ctx->skip_next_no_removal = false;
-                continue;
-            }
-        }
+        bool skip_next = ctx->skip_next_line;
+        ctx->skip_next_line = false;
         if (replaced) {
             ctx->stats.replacements += 1;
         }
         if (removed) {
             ctx->stats.removals += 1;
+        }
+        if (removed || skip_next) {
+            i++;
         }
     }
     if (!do_opt) {
