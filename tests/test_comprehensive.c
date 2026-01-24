@@ -715,7 +715,11 @@ static int test_bsf_to_tzcnt() {
     TEST_ASSERT(ctx != NULL, "Failed to create context");
     asmopt_set_target_cpu(ctx, "zen4");
     
-    const char* input = "bsf rax, rbx\n";
+    const char* input =
+        "test rbx, rbx\n"
+        "jz .skip\n"
+        "bsf rax, rbx\n"
+        ".skip:\n";
     asmopt_parse_string(ctx, input);
     asmopt_optimize(ctx);
     
