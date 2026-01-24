@@ -770,6 +770,14 @@ static bool asmopt_is_immediate_minus_one(const char* operand, const char* synta
     return success && value == -1;
 }
 
+static void asmopt_build_suffixed_name(char* buffer, size_t size, const char* base, char suffix) {
+    if (suffix) {
+        snprintf(buffer, size, "%s%c", base, suffix);
+    } else {
+        snprintf(buffer, size, "%s", base);
+    }
+}
+
 static bool asmopt_is_target_zen(asmopt_context* ctx) {
     if (!ctx || !ctx->target_cpu) {
         return false;
@@ -1436,11 +1444,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
     /* Pattern 23: bsf reg, reg -> tzcnt reg, reg (Zen/BMI1) */
     if (strcmp(base_mnemonic, "bsf") == 0 && has_two_ops && dest_reg && src_reg && asmopt_is_target_zen(ctx)) {
         char tzcnt_name[8];
-        if (suffix) {
-            snprintf(tzcnt_name, sizeof(tzcnt_name), "tzcnt%c", suffix);
-        } else {
-            snprintf(tzcnt_name, sizeof(tzcnt_name), "tzcnt");
-        }
+        asmopt_build_suffixed_name(tzcnt_name, sizeof(tzcnt_name), "tzcnt", suffix);
         char* trimmed_comment = asmopt_trim_comment(comment);
         size_t new_len = strlen(indent) + strlen(tzcnt_name) + strlen(spacing) +
                          strlen(dest) + strlen(pre_space) + strlen(post_space) + strlen(src) + 2;
@@ -1468,11 +1472,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
     /* Pattern 24: bsr reg, reg -> lzcnt reg, reg (Zen/BMI1) */
     if (strcmp(base_mnemonic, "bsr") == 0 && has_two_ops && dest_reg && src_reg && asmopt_is_target_zen(ctx)) {
         char lzcnt_name[8];
-        if (suffix) {
-            snprintf(lzcnt_name, sizeof(lzcnt_name), "lzcnt%c", suffix);
-        } else {
-            snprintf(lzcnt_name, sizeof(lzcnt_name), "lzcnt");
-        }
+        asmopt_build_suffixed_name(lzcnt_name, sizeof(lzcnt_name), "lzcnt", suffix);
         char* trimmed_comment = asmopt_trim_comment(comment);
         size_t new_len = strlen(indent) + strlen(lzcnt_name) + strlen(spacing) +
                          strlen(dest) + strlen(pre_space) + strlen(post_space) + strlen(src) + 2;
