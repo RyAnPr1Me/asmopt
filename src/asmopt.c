@@ -771,7 +771,7 @@ static bool asmopt_is_immediate_minus_one(const char* operand, const char* synta
 }
 
 static void asmopt_build_suffixed_name(char* buffer, size_t size, const char* base, char suffix) {
-    if (suffix) {
+    if (suffix != '\0') {
         snprintf(buffer, size, "%s%c", base, suffix);
     } else {
         snprintf(buffer, size, "%s", base);

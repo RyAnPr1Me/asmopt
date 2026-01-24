@@ -103,7 +103,9 @@ static int test_complete_function() {
     
     size_t original, optimized, replacements, removals;
     asmopt_get_stats(ctx, &original, &optimized, &replacements, &removals);
-    /* 15 replacements: previous 13 plus bsf/bsr zen substitutions. */
+    /* 15 replacements: mov0/xor, imul/shl, add1/inc, sub1/dec, cmp0/test, or-self/test,
+       add-1/dec, sub-1/inc, and-self/test, cmp-self/test, and_zero/xor, sub-self/xor,
+       redundant move keep, plus bsf/tzcnt and bsr/lzcnt. */
     TEST_ASSERT(replacements == 15, "Expected 15 replacements");
     /* 9 removals: redundant mov, imul-by-1, add/sub zero, shift zero, or zero, xor zero,
        and -1, fallthrough jump */
@@ -377,7 +379,7 @@ static int test_comprehensive_report() {
     TEST_ASSERT(strstr(report, "bsf_to_tzcnt") != NULL, "Pattern 23 missing");
     TEST_ASSERT(strstr(report, "bsr_to_lzcnt") != NULL, "Pattern 24 missing");
     
-    /* 15 replacements correspond to the same list in test_complete_function above. */
+    /* 15 replacements correspond to the list in test_complete_function (including bsf/tzcnt, bsr/lzcnt). */
     TEST_ASSERT(strstr(report, "Replacements: 15") != NULL, "Wrong replacement count");
     TEST_ASSERT(strstr(report, "Removals: 9") != NULL, "Wrong removal count");
     
