@@ -732,7 +732,7 @@ static int test_bsf_to_tzcnt() {
     TEST_PASS("test_bsf_to_tzcnt");
 }
 
-/* Test Pattern 24 removed: bsr -> lzcnt not applied */
+/* Test Pattern 26 removed: bsr -> lzcnt not applied */
 
 int main() {
     int passed = 0;

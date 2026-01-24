@@ -25,6 +25,7 @@ static int test_complete_function() {
     TEST_ASSERT(ctx != NULL, "Failed to create context");
     asmopt_set_option(ctx, "hot_align", "1");
     asmopt_set_target_cpu(ctx, "zen3");
+    asmopt_set_amd_optimizations(ctx, 1);
     
     const char* input = 
         ".text\n"
@@ -204,7 +205,6 @@ static int test_option_setting() {
     asmopt_set_option(ctx, "test_key", "test_value");
     asmopt_set_target_cpu(ctx, "zen3");
     asmopt_set_format(ctx, "intel");
-    asmopt_set_amd_optimizations(ctx, 1);
     
     /* These should not crash */
     asmopt_enable_optimization(ctx, "peephole");
@@ -330,6 +330,7 @@ static int test_comprehensive_report() {
         "or r8, 0\n"        /* Pattern 7 */
         "xor r9, 0\n"       /* Pattern 8 */
         "and r10, -1\n"     /* Pattern 9 */
+        "lea r10, [r10]\n"  /* Pattern 24 */
         "add r11, 1\n"      /* Pattern 10 */
         "sub r12, 1\n"      /* Pattern 11 */
         "mov r13, r14\n"    /* Pattern 12 */
@@ -348,6 +349,13 @@ static int test_comprehensive_report() {
         "test rbx, rbx\n"
         "jz .skip_bsf\n"
         "bsf rax, rbx\n"    /* Pattern 23 */
+        "mov r15, r14\n"    /* Pattern 26 */
+        "mov r15, r13\n"    /* Pattern 26 */
+        "mov r10, r11\n"    /* Pattern 27 */
+        "mov r12, r9\n"     /* Pattern 27 */
+        "jne .branch_true\n"
+        "jmp .branch_false\n"
+        ".branch_true:\n"
         ".skip_bsf:\n";
     
     asmopt_parse_string(ctx, input);
@@ -366,6 +374,7 @@ static int test_comprehensive_report() {
     TEST_ASSERT(strstr(report, "or_zero") != NULL, "Pattern 7 missing");
     TEST_ASSERT(strstr(report, "xor_zero") != NULL, "Pattern 8 missing");
     TEST_ASSERT(strstr(report, "and_minus_one") != NULL, "Pattern 9 missing");
+    TEST_ASSERT(strstr(report, "redundant_lea") != NULL, "Pattern 24 missing");
     TEST_ASSERT(strstr(report, "add_one_to_inc") != NULL, "Pattern 10 missing");
     TEST_ASSERT(strstr(report, "sub_one_to_dec") != NULL, "Pattern 11 missing");
     TEST_ASSERT(strstr(report, "redundant_move_pair") != NULL, "Pattern 12 missing");
@@ -380,10 +389,13 @@ static int test_comprehensive_report() {
     TEST_ASSERT(strstr(report, "fallthrough_jump") != NULL, "Pattern 21 missing");
     TEST_ASSERT(strstr(report, "hot_loop_align") != NULL, "Pattern 22 missing");
     TEST_ASSERT(strstr(report, "bsf_to_tzcnt") != NULL, "Pattern 23 missing");
+    TEST_ASSERT(strstr(report, "invert_conditional_jump") != NULL, "Pattern 25 missing");
+    TEST_ASSERT(strstr(report, "dead_store_move") != NULL, "Pattern 26 missing");
+    TEST_ASSERT(strstr(report, "schedule_swap_move") != NULL, "Pattern 27 missing");
     
-    /* 14 replacements correspond to the list in test_complete_function (including bsf/tzcnt). */
-    TEST_ASSERT(strstr(report, "Replacements: 14") != NULL, "Wrong replacement count");
-    TEST_ASSERT(strstr(report, "Removals: 9") != NULL, "Wrong removal count");
+    /* 17 replacements correspond to the list in test_complete_function (including bsf/tzcnt) plus branch inversion and move scheduling; 12 removals include lea + branch inversion + dead store. */
+    TEST_ASSERT(strstr(report, "Replacements: 17") != NULL, "Wrong replacement count");
+    TEST_ASSERT(strstr(report, "Removals: 12") != NULL, "Wrong removal count");
     
     free(report);
     asmopt_destroy(ctx);

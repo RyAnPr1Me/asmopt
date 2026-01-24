@@ -177,6 +177,25 @@ static int test_xor_zero() {
     TEST_PASS("test_xor_zero");
 }
 
+/* Test Pattern 24: redundant lea elimination */
+static int test_redundant_lea() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "lea rax, [rax]\nlea rbx, [rcx]\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "lea rax, [rax]") == NULL, "Redundant lea not removed");
+    TEST_ASSERT(strstr(output, "lea rbx, [rcx]") != NULL, "Valid lea was removed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_redundant_lea");
+}
+
 /* Test optimization statistics */
 static int test_optimization_stats() {
     asmopt_context* ctx = asmopt_create("x86-64");
@@ -522,7 +541,62 @@ static int test_bsf_to_tzcnt() {
     TEST_PASS("test_bsf_to_tzcnt");
 }
 
-/* Test Pattern 24 removed: bsr -> lzcnt not applied */
+/* Test Pattern 25: invert conditional jump */
+static int test_invert_conditional_jump() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "je .then\njmp .else\n.then:\nmov rax, 0\n.else:\nret\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "jne .else") != NULL, "Conditional jump not inverted");
+    TEST_ASSERT(strstr(output, "jmp .else") == NULL, "Unconditional jump not removed");
+    TEST_ASSERT(strstr(output, ".then:") != NULL, "Target label removed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_invert_conditional_jump");
+}
+
+/* Test Pattern 26: dead store move elimination */
+static int test_dead_store_move() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "mov rax, rbx\nmov rax, rcx\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "mov rax, rbx") == NULL, "Dead store not removed");
+    TEST_ASSERT(strstr(output, "mov rax, rcx") != NULL, "Second mov missing");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_dead_store_move");
+}
+
+/* Test Pattern 27: schedule swap for independent moves */
+static int test_schedule_swap_move() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "mov rax, rbx\nmov rcx, rdx\nmov r8, r9\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "mov rcx, rdx\nmov rax, rbx\nmov r8, r9") != NULL, "Moves not reordered");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_schedule_swap_move");
+}
 
 /* Test Pattern 11: sub 1 to dec */
 static int test_sub_one_to_dec() {
@@ -557,6 +631,7 @@ int main() {
     total++; passed += test_shift_zero();
     total++; passed += test_or_zero();
     total++; passed += test_xor_zero();
+    total++; passed += test_redundant_lea();
     total++; passed += test_add_one_to_inc();
     total++; passed += test_sub_one_to_dec();
     total++; passed += test_swap_move_elimination();
@@ -571,6 +646,9 @@ int main() {
     total++; passed += test_fallthrough_jump_removal();
     total++; passed += test_hot_loop_alignment();
     total++; passed += test_bsf_to_tzcnt();
+    total++; passed += test_invert_conditional_jump();
+    total++; passed += test_dead_store_move();
+    total++; passed += test_schedule_swap_move();
     total++; passed += test_optimization_stats();
     total++; passed += test_report_generation();
     total++; passed += test_context_lifecycle();

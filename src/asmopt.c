@@ -13,7 +13,7 @@
  *   5. Reporting: Tracks and reports all optimizations applied
  * 
  * Key Features:
- *   - 11 peephole optimization patterns
+ *   - 27 peephole optimization patterns
  *   - Support for Intel and AT&T syntax
  *   - Comment and label preservation
  *   - Detailed optimization reporting
@@ -108,11 +108,12 @@ struct asmopt_context {
     size_t opt_event_capacity;
     /* Flag to enable hot loop alignment when hot_align option is set */
     bool insert_hot_align;
+    bool skip_next_line;
 };
 
 /* Instruction mnemonics that can have AT&T syntax suffixes (b, w, l, q) */
 static const char* const SUFFIX_MNEMONICS[] = {
-    "mov", "add", "sub", "xor", "and", "or", "cmp", "test", 
+    "mov", "lea", "add", "sub", "xor", "and", "or", "cmp", "test", 
     "shl", "shr", "sal", "sar"
 };
 static const size_t SUFFIX_MNEMONICS_COUNT = sizeof(SUFFIX_MNEMONICS) / sizeof(SUFFIX_MNEMONICS[0]);
@@ -771,6 +772,94 @@ static bool asmopt_is_immediate_minus_one(const char* operand, const char* synta
     return success && value == -1;
 }
 
+/* Check if displacement represents zero (empty is zero for AT&T base-only syntax). */
+static bool asmopt_is_zero_displacement(const char* value) {
+    char* trimmed = asmopt_strip(value);
+    if (!trimmed) {
+        return false;
+    }
+    bool zero = false;
+    if (*trimmed == '\0') {
+        /* Empty displacement in AT&T syntax implies zero. */
+        zero = true;
+    } else {
+        bool success = false;
+        long disp = asmopt_parse_immediate(trimmed, NULL, &success);
+        zero = success && disp == 0;
+    }
+    free(trimmed);
+    return zero;
+}
+
+/* Detect LEA identity: src memory uses base == dest with zero displacement (Intel or AT&T). */
+static bool asmopt_is_identity_lea(const char* src, const char* dest, const char* syntax) {
+    if (!src || !dest || !asmopt_is_register(dest, syntax)) {
+        return false;
+    }
+    char* trimmed = asmopt_strip(src);
+    if (!trimmed) {
+        return false;
+    }
+    bool matches = false;
+    if (syntax && strcmp(syntax, "att") == 0) {
+        if (!strchr(trimmed, '(')) {
+            free(trimmed);
+            return false;
+        }
+        const char* open = strchr(trimmed, '(');
+        if (open) {
+            const char* close = strchr(open + 1, ')');
+            if (close) {
+                const char* tail = close + 1;
+                while (*tail && isspace((unsigned char)*tail)) {
+                    tail++;
+                }
+                if (*tail == '\0') {
+                    size_t disp_len = (size_t)(open - trimmed);
+                    char* disp = malloc(disp_len + 1);
+                    if (disp) {
+                        memcpy(disp, trimmed, disp_len);
+                        disp[disp_len] = '\0';
+                        if (asmopt_is_zero_displacement(disp)) {
+                            size_t len = (size_t)(close - (open + 1));
+                            char* base = malloc(len + 1);
+                            if (base) {
+                                memcpy(base, open + 1, len);
+                                base[len] = '\0';
+                                char* inner = asmopt_strip(base);
+                                if (inner) {
+                                    matches = asmopt_casecmp(inner, dest) == 0;
+                                }
+                                free(inner);
+                                free(base);
+                            }
+                        }
+                        free(disp);
+                    }
+                }
+            }
+        }
+    } else {
+        size_t len = strlen(trimmed);
+        if (len >= 2 && trimmed[0] == '[' && trimmed[len - 1] == ']') {
+            size_t inner_len = len - 2;
+            char* base = malloc(inner_len + 1);
+            if (base) {
+                memcpy(base, trimmed + 1, inner_len);
+                base[inner_len] = '\0';
+                char* inner = asmopt_strip(base);
+                if (inner) {
+                    matches = asmopt_casecmp(inner, dest) == 0;
+                }
+                free(inner);
+                free(base);
+            }
+        }
+    }
+    free(trimmed);
+    return matches;
+}
+
 static void asmopt_build_suffixed_name(char* buffer, size_t size, const char* base, char suffix) {
     if (suffix != '\0') {
         snprintf(buffer, size, "%s%c", base, suffix);
@@ -781,6 +870,9 @@ static void asmopt_build_suffixed_name(char* buffer, size_t size, const char* ba
 
 static bool asmopt_is_target_zen(asmopt_context* ctx) {
     if (!ctx || !ctx->target_cpu) {
+        return false;
+    }
+    if (!ctx->amd_optimizations) {
         return false;
     }
     const size_t prefix_len = strlen("zen");
@@ -902,6 +994,8 @@ static int asmopt_log2(long value) {
 static bool asmopt_is_jump_mnemonic(const char* mnemonic);
 static bool asmopt_is_conditional_jump(const char* mnemonic);
 static bool asmopt_is_unconditional_jump(const char* mnemonic);
+static bool asmopt_invert_conditional_jump(const char* mnemonic, char* buffer, size_t size);
+static bool asmopt_is_label_operand(const char* operand);
 
 static void asmopt_handle_identity_removal(asmopt_context* ctx, size_t line_no, const char* pattern_name,
                                            const char* line, const char* comment, const char* indent, bool* removed) {
@@ -920,15 +1014,131 @@ static void asmopt_handle_identity_removal(asmopt_context* ctx, size_t line_no, 
     *removed = true;
 }
 
+static bool asmopt_is_mov_no_comment(const char* line, const char* syntax, char** dest, char** src) {
+    if (dest) {
+        *dest = NULL;
+    }
+    if (src) {
+        *src = NULL;
+    }
+    if (!line) {
+        return false;
+    }
+    char* code = NULL;
+    char* comment = NULL;
+    asmopt_split_comment(line, &code, &comment);
+    if (!code || !comment) {
+        free(code);
+        free(comment);
+        return false;
+    }
+    if (!asmopt_is_blank(comment)) {
+        free(code);
+        free(comment);
+        return false;
+    }
+    if (asmopt_is_directive_or_label(code)) {
+        free(code);
+        free(comment);
+        return false;
+    }
+    char* indent = NULL;
+    char* mnemonic = NULL;
+    char* spacing = NULL;
+    char* operands = NULL;
+    if (!asmopt_parse_instruction(code, &indent, &mnemonic, &spacing, &operands)) {
+        free(code);
+        free(comment);
+        return false;
+    }
+    char mnemonic_lower[32];
+    size_t mlen = strlen(mnemonic);
+    if (mlen >= sizeof(mnemonic_lower)) {
+        mlen = sizeof(mnemonic_lower) - 1;
+    }
+    for (size_t i = 0; i < mlen; i++) {
+        mnemonic_lower[i] = (char)tolower((unsigned char)mnemonic[i]);
+    }
+    mnemonic_lower[mlen] = '\0';
+    char base_mnemonic[32] = {0};
+    size_t mlen_actual = strlen(mnemonic_lower);
+    bool can_have_suffix = false;
+    for (size_t i = 0; i < SUFFIX_MNEMONICS_COUNT; i++) {
+        size_t base_len = strlen(SUFFIX_MNEMONICS[i]);
+        if (mlen_actual == base_len + 1 && strncmp(mnemonic_lower, SUFFIX_MNEMONICS[i], base_len) == 0) {
+            can_have_suffix = true;
+            break;
+        }
+    }
+    if (can_have_suffix && mlen_actual >= 4) {
+        char last_char = mnemonic_lower[mlen_actual - 1];
+        if (last_char == 'b' || last_char == 'w' || last_char == 'l' || last_char == 'q') {
+            strncpy(base_mnemonic, mnemonic_lower, mlen_actual - 1);
+            base_mnemonic[mlen_actual - 1] = '\0';
+        } else {
+            strcpy(base_mnemonic, mnemonic_lower);
+        }
+    } else {
+        strcpy(base_mnemonic, mnemonic_lower);
+    }
+    bool result = false;
+    char* op1 = NULL;
+    char* op2 = NULL;
+    char* pre_space = NULL;
+    char* post_space = NULL;
+    bool has_two_ops = asmopt_parse_operands(operands, &op1, &op2, &pre_space, &post_space);
+    if (has_two_ops && strcmp(base_mnemonic, "mov") == 0) {
+        const char* dest_op = NULL;
+        const char* src_op = NULL;
+        if (syntax && strcmp(syntax, "att") == 0) {
+            src_op = op1;
+            dest_op = op2;
+        } else {
+            dest_op = op1;
+            src_op = op2;
+        }
+        if (dest_op && src_op && asmopt_is_register(dest_op, syntax) && asmopt_is_register(src_op, syntax)) {
+            if (dest) {
+                *dest = asmopt_strdup(dest_op);
+            }
+            if (src) {
+                *src = asmopt_strdup(src_op);
+            }
+            result = true;
+        }
+    }
+    free(op1);
+    free(op2);
+    free(pre_space);
+    free(post_space);
+    free(indent);
+    free(mnemonic);
+    free(spacing);
+    free(operands);
+    free(code);
+    free(comment);
+    if (!result) {
+        if (dest && *dest) {
+            free(*dest);
+            *dest = NULL;
+        }
+        if (src && *src) {
+            free(*src);
+            *src = NULL;
+        }
+    }
+    return result;
+}
+
 static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char* line, const char* syntax, bool* replaced, bool* removed) {
     /*
      * Peephole Optimizer - Pattern Matching Engine
      * 
-     * This function implements 23 optimization patterns for x86-64 assembly:
-     * (7 identity + 1 redundant move + 13 replacements: 2,4,10,11,13-20 + 1 control-flow
+     * This function implements 27 optimization patterns for x86-64 assembly:
+     * (8 identity + 1 redundant move + 14 replacements: 2,4,10,11,13-20,26-27 + 2 control-flow
      *  + 1 cache-aware + 1 architecture-aware)
      * 
-     * Identity/No-op Eliminations (7 patterns):
+     * Identity/No-op Eliminations (8 patterns):
      *   Pattern 1: mov rax, rax            → (removed)        - Redundant self-move
      *   Pattern 3: imul rax, 1             → (removed)        - Identity multiplication
      *   Pattern 5: add/sub rax, 0          → (removed)        - Identity addition/subtraction
@@ -936,6 +1146,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
      *   Pattern 7: or rax, 0               → (removed)        - Identity OR
      *   Pattern 8: xor rax, 0              → (removed)        - Identity XOR (immediate only)
      *   Pattern 9: and rax, -1             → (removed)        - Identity AND (all bits)
+     *   Pattern 24: lea rax, [rax]         → (removed)        - Redundant address calc
      * 
      * Redundant Move Elimination (1 pattern):
      *   Pattern 12: mov a, b + mov b, a    → mov a, b         - Remove redundant move
@@ -954,8 +1165,15 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
      *   Pattern 19: and rax, rax           → test rax, rax    - Flag-only
      *   Pattern 20: cmp rax, rax           → test rax, rax    - Self-compare
      * 
-     * Control-flow (1 pattern):
+     * Control-flow (2 patterns):
      *   Pattern 21: jmp next_label         → (removed)        - Fallthrough jump
+     *   Pattern 25: jcc label + jmp next   → j!cc next        - Branch inversion
+     * 
+     * Dead code elimination (1 pattern):
+     *   Pattern 26: mov r1, r2 + mov r1, r3 → mov r1, r3        - Dead store
+     * 
+     * Scheduling (1 pattern):
+     *   Pattern 27: mov r1, r2 + mov r3, r4 → mov r3, r4 + mov r1, r2 - Move hoist
      * 
      * Cache-aware (1 pattern):
      *   Pattern 22: .hot_loop:             → .align 64 + label - Align hot loop headers
@@ -970,6 +1188,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
      */
     *replaced = false;
     *removed = false;
+    ctx->skip_next_line = false;
     char* code = NULL;
     char* comment = NULL;
     asmopt_split_comment(line, &code, &comment);
@@ -1113,6 +1332,78 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
             }
             free(trimmed_comment);
             goto cleanup;
+        }
+    }
+
+    /* Pattern 24: lea rax, [rax] -> remove (identity) */
+    if (strcmp(base_mnemonic, "lea") == 0 && has_two_ops) {
+        if (dest && src && asmopt_is_identity_lea(src, dest, syntax)) {
+            *replaced = false;
+            asmopt_handle_identity_removal(ctx, line_no, "redundant_lea", line, comment, indent, removed);
+            goto cleanup;
+        }
+    }
+
+    /* Pattern 26: mov rax, rbx / mov rax, rcx -> remove dead store */
+    if (strcmp(base_mnemonic, "mov") == 0 && has_two_ops && dest_reg && src_reg) {
+        size_t next_index = line_no;
+        if (next_index < ctx->original_count) {
+            const char* next_line = ctx->original_lines[next_index];
+            char* next_dest = NULL;
+            char* next_src = NULL;
+            if (asmopt_is_mov_no_comment(next_line, syntax, &next_dest, &next_src)) {
+                bool dead_store = next_dest && asmopt_casecmp(dest, next_dest) == 0 &&
+                                  next_src && asmopt_casecmp(src, next_src) != 0;
+                if (dead_store) {
+                    size_t combo_len = strlen(line) + strlen(next_line) + 2;
+                    char* combined = malloc(combo_len + 1);
+                    if (combined) {
+                        snprintf(combined, combo_len + 1, "%s\n%s", line, next_line);
+                        asmopt_record_optimization(ctx, line_no, "dead_store_move", combined, next_line);
+                        free(combined);
+                    } else {
+                        asmopt_record_optimization(ctx, line_no, "dead_store_move", line, next_line);
+                    }
+                    asmopt_store_optimized_line(ctx, next_line);
+                    *removed = true;
+                    *replaced = true;
+                    ctx->skip_next_line = true;
+                    free(next_dest);
+                    free(next_src);
+                    goto cleanup;
+                }
+            }
+            free(next_dest);
+            free(next_src);
+        }
+    }
+
+    /* Pattern 27: mov rax, rbx / mov rcx, rdx -> reorder for scheduling */
+    if (strcmp(base_mnemonic, "mov") == 0 && has_two_ops && dest_reg && src_reg) {
+        size_t next_index = line_no;
+        if (next_index < ctx->original_count) {
+            const char* next_line = ctx->original_lines[next_index];
+            char* next_dest = NULL;
+            char* next_src = NULL;
+            if (asmopt_is_mov_no_comment(next_line, syntax, &next_dest, &next_src)) {
+                bool independent = next_dest && next_src &&
+                                   asmopt_casecmp(dest, next_dest) != 0 &&
+                                   asmopt_casecmp(dest, next_src) != 0 &&
+                                   asmopt_casecmp(src, next_dest) != 0 &&
+                                   asmopt_casecmp(src, next_src) != 0;
+                if (independent) {
+                    asmopt_record_optimization(ctx, line_no, "schedule_swap_move", line, next_line);
+                    asmopt_store_optimized_line(ctx, next_line);
+                    asmopt_store_optimized_line(ctx, line);
+                    *replaced = true;
+                    ctx->skip_next_line = true;
+                    free(next_dest);
+                    free(next_src);
+                    goto cleanup;
+                }
+            }
+            free(next_dest);
+            free(next_src);
         }
     }
 
@@ -1541,6 +1832,125 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
         free(trimmed);
     }
 
+    /* Pattern 25: jcc label + jmp other + label -> invert conditional jump */
+    if (!has_two_ops && operands && *operands && asmopt_is_conditional_jump(base_mnemonic) && !strchr(operands, ',')) {
+        char inverted[16];
+        if (asmopt_invert_conditional_jump(base_mnemonic, inverted, sizeof(inverted))) {
+            char* cond_target = asmopt_strip(operands);
+            if (cond_target && asmopt_is_label_operand(cond_target)) {
+                size_t next_index = line_no;
+                size_t label_index = line_no + 1;
+                if (next_index < ctx->original_count && label_index < ctx->original_count) {
+                    const char* next_line = ctx->original_lines[next_index];
+                    char* next_code = NULL;
+                    char* next_comment = NULL;
+                    asmopt_split_comment(next_line, &next_code, &next_comment);
+                    if (next_code && !asmopt_is_directive_or_label(next_code)) {
+                        char* next_indent = NULL;
+                        char* next_mnemonic = NULL;
+                        char* next_spacing = NULL;
+                        char* next_operands = NULL;
+                        if (asmopt_parse_instruction(next_code, &next_indent, &next_mnemonic, &next_spacing, &next_operands)) {
+                            char next_lower[32];
+                            size_t next_len = strlen(next_mnemonic);
+                            if (next_len >= sizeof(next_lower)) {
+                                next_len = sizeof(next_lower) - 1;
+                            }
+                            for (size_t i = 0; i < next_len; i++) {
+                                next_lower[i] = (char)tolower((unsigned char)next_mnemonic[i]);
+                            }
+                            next_lower[next_len] = '\0';
+                            if (asmopt_is_unconditional_jump(next_lower) && next_operands && !strchr(next_operands, ',')) {
+                                char* jmp_target = asmopt_strip(next_operands);
+                                if (jmp_target && asmopt_is_label_operand(jmp_target)) {
+                                    const char* label_line = ctx->original_lines[label_index];
+                                    char* label_code = NULL;
+                                    char* label_comment = NULL;
+                                    asmopt_split_comment(label_line, &label_code, &label_comment);
+                                    if (label_code) {
+                                        char* label_trimmed = asmopt_strip(label_code);
+                                        if (label_trimmed) {
+                                            size_t label_len = strlen(label_trimmed);
+                                            if (label_len > 0 && label_trimmed[label_len - 1] == ':') {
+                                                label_trimmed[label_len - 1] = '\0';
+                                                if (strcmp(label_trimmed, cond_target) == 0) {
+                                                    char* trimmed_comment = asmopt_trim_comment(comment);
+                                                    size_t new_len = strlen(indent) + strlen(inverted) + strlen(spacing) + strlen(jmp_target) + 1;
+                                                    if (!asmopt_is_blank(trimmed_comment)) {
+                                                        new_len += strlen(trimmed_comment) + 1;
+                                                    }
+                                                    char* newline = malloc(new_len + 1);
+                                                    if (newline) {
+                                                        if (!asmopt_is_blank(trimmed_comment)) {
+                                                            snprintf(newline, new_len + 1, "%s%s%s%s %s",
+                                                                     indent, inverted, spacing, jmp_target, trimmed_comment);
+                                                        } else {
+                                                            snprintf(newline, new_len + 1, "%s%s%s%s",
+                                                                     indent, inverted, spacing, jmp_target);
+                                                        }
+                                                        size_t combo_len = strlen(line) + strlen(next_line) + 2;
+                                                        char* combined = malloc(combo_len + 1);
+                                                        if (combined) {
+                                                            snprintf(combined, combo_len + 1, "%s\n%s", line, next_line);
+                                                            asmopt_record_optimization(ctx, line_no, "invert_conditional_jump", combined, newline);
+                                                            free(combined);
+                                                        } else {
+                                                            asmopt_record_optimization(ctx, line_no, "invert_conditional_jump", line, newline);
+                                                        }
+                                                        asmopt_store_optimized_line(ctx, newline);
+                                                        free(newline);
+                                                        if (!asmopt_is_blank(next_comment)) {
+                                                            char* trimmed_next = asmopt_trim_comment(next_comment);
+                                                            size_t next_len_comment = strlen(next_indent) + strlen(trimmed_next) + 1;
+                                                            char* comment_line = malloc(next_len_comment + 1);
+                                                            if (comment_line) {
+                                                                snprintf(comment_line, next_len_comment + 1, "%s%s", next_indent, trimmed_next);
+                                                                asmopt_store_optimized_line(ctx, comment_line);
+                                                                free(comment_line);
+                                                            }
+                                                            free(trimmed_next);
+                                                        }
+                                                        *replaced = true;
+                                                        *removed = true;
+                                                        free(trimmed_comment);
+                                                        free(label_trimmed);
+                                                        free(label_code);
+                                                        free(label_comment);
+                                                        free(jmp_target);
+                                                        free(next_indent);
+                                                        free(next_mnemonic);
+                                                        free(next_spacing);
+                                                        free(next_operands);
+                                                        free(next_code);
+                                                        free(next_comment);
+                                                        free(cond_target);
+                                                        goto cleanup;
+                                                    }
+                                                    free(trimmed_comment);
+                                                }
+                                            }
+                                            free(label_trimmed);
+                                        }
+                                    }
+                                    free(label_code);
+                                    free(label_comment);
+                                }
+                                free(jmp_target);
+                            }
+                        }
+                        free(next_indent);
+                        free(next_mnemonic);
+                        free(next_spacing);
+                        free(next_operands);
+                    }
+                    free(next_code);
+                    free(next_comment);
+                }
+            }
+            free(cond_target);
+        }
+    }
+
     /* Pattern 23: bsf reg, reg -> tzcnt reg, reg (Zen/BMI1, guarded zero) */
     if (strcmp(base_mnemonic, "bsf") == 0 && has_two_ops && dest_reg && src_reg && asmopt_is_target_zen(ctx) &&
         asmopt_is_zero_guarded(ctx, line_no, src, syntax)) {
@@ -1768,6 +2178,25 @@ static bool asmopt_is_jump_mnemonic(const char* mnemonic) {
     return false;
 }
 
+static bool asmopt_is_label_operand(const char* operand) {
+    if (!operand) {
+        return false;
+    }
+    const char* op = operand;
+    while (*op == '*') {
+        op++;
+    }
+    if (!isalpha((unsigned char)*op) && *op != '_' && *op != '.') {
+        return false;
+    }
+    for (const char* ptr = op; *ptr; ptr++) {
+        if (!isalnum((unsigned char)*ptr) && *ptr != '_' && *ptr != '.') {
+            return false;
+        }
+    }
+    return true;
+}
+
 static bool asmopt_is_conditional_jump(const char* mnemonic) {
     if (!mnemonic) {
         return false;
@@ -1781,6 +2210,29 @@ static bool asmopt_is_conditional_jump(const char* mnemonic) {
     size_t count = sizeof(jumps) / sizeof(jumps[0]);
     for (size_t i = 0; i < count; i++) {
         if (asmopt_casecmp(mnemonic, jumps[i]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool asmopt_invert_conditional_jump(const char* mnemonic, char* buffer, size_t size) {
+    if (!mnemonic || !buffer || size == 0) {
+        return false;
+    }
+    const char* pairs[][2] = {
+        {"je", "jne"}, {"jz", "jnz"}, {"jne", "je"}, {"jnz", "jz"},
+        {"jb", "jnb"}, {"jnae", "jae"}, {"jc", "jnc"},
+        {"jnb", "jb"}, {"jae", "jnae"}, {"jnc", "jc"},
+        {"jbe", "ja"}, {"jna", "ja"}, {"ja", "jbe"}, {"jnbe", "jbe"},
+        {"jl", "jge"}, {"jnge", "jge"}, {"jge", "jl"}, {"jnl", "jl"},
+        {"jle", "jg"}, {"jng", "jg"}, {"jg", "jle"}, {"jnle", "jle"},
+        {"jo", "jno"}, {"jno", "jo"}, {"js", "jns"}, {"jns", "js"},
+        {"jp", "jnp"}, {"jpe", "jpo"}, {"jnp", "jp"}, {"jpo", "jpe"}
+    };
+    for (size_t i = 0; i < sizeof(pairs) / sizeof(pairs[0]); i++) {
+        if (asmopt_casecmp(mnemonic, pairs[i][0]) == 0) {
+            snprintf(buffer, size, "%s", pairs[i][1]);
             return true;
         }
     }
@@ -2348,14 +2800,16 @@ int asmopt_optimize(asmopt_context* ctx) {
         bool replaced = false;
         bool removed = false;
         asmopt_peephole_line(ctx, i + 1, ctx->original_lines[i], syntax, &replaced, &removed);
-        if (replaced && removed) {
-            i++;
-        }
+        bool skip_next = ctx->skip_next_line;
+        ctx->skip_next_line = false;
         if (replaced) {
             ctx->stats.replacements += 1;
         }
         if (removed) {
             ctx->stats.removals += 1;
+        }
+        if (removed || skip_next) {
+            i++;
         }
     }
     if (!do_opt) {
