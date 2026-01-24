@@ -783,8 +783,14 @@ static bool asmopt_is_target_zen(asmopt_context* ctx) {
         return false;
     }
     const size_t prefix_len = strlen("zen");
-    return strlen(ctx->target_cpu) >= prefix_len &&
-           strncasecmp(ctx->target_cpu, "zen", prefix_len) == 0;
+    if (strlen(ctx->target_cpu) < prefix_len) {
+        return false;
+    }
+    if (strncasecmp(ctx->target_cpu, "zen", prefix_len) != 0) {
+        return false;
+    }
+    char next = ctx->target_cpu[prefix_len];
+    return next == '\0' || isdigit((unsigned char)next);
 }
 
 static bool asmopt_is_zero_guarded(asmopt_context* ctx, size_t line_no, const char* src, const char* syntax) {
@@ -917,9 +923,9 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
     /*
      * Peephole Optimizer - Pattern Matching Engine
      * 
-     * This function implements 24 optimization patterns for x86-64 assembly:
-     * (7 identity + 1 redundant move + 14 replacements: 2,4,10,11,13-20 + 1 control-flow
-     *  + 1 cache-aware + 2 architecture-aware)
+     * This function implements 23 optimization patterns for x86-64 assembly:
+     * (7 identity + 1 redundant move + 13 replacements: 2,4,10,11,13-20 + 1 control-flow
+     *  + 1 cache-aware + 1 architecture-aware)
      * 
      * Identity/No-op Eliminations (7 patterns):
      *   Pattern 1: mov rax, rax            → (removed)        - Redundant self-move
@@ -953,9 +959,8 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
      * Cache-aware (1 pattern):
      *   Pattern 22: .hot_loop:             → .align 64 + label - Align hot loop headers
      * 
-     * Architecture-aware (2 patterns):
+     * Architecture-aware (1 pattern):
      *   Pattern 23: bsf reg, reg           → tzcnt reg, reg    - Zen BMI1 preference
-     *   Pattern 24: bsr reg, reg           → lzcnt reg, reg    - Zen BMI1 preference
      * 
      * Note: inc/dec create false dependencies on flags register (Pentium 4+), so patterns
      * 10-11 optimize for size. Future: make configurable (-Os vs -O3).
@@ -1564,7 +1569,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
         goto cleanup;
     }
 
-    /* Pattern 24 removed: bsr -> lzcnt is not semantically equivalent. */
+    /* bsr -> lzcnt not applied: not semantically equivalent. */
 
     /* Pattern 3: imul/mul rax, 1 -> remove (identity) */
     if ((strcmp(base_mnemonic, "imul") == 0 || strcmp(base_mnemonic, "mul") == 0) && has_two_ops) {
