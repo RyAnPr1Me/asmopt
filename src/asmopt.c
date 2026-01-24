@@ -35,6 +35,7 @@
 #include "asmopt.h"
 
 #define IMMEDIATE_BUFFER_SIZE 64
+#define ZERO_GUARD_PATTERN_LINES 3
 
 typedef struct {
     size_t original_lines;
@@ -794,7 +795,7 @@ static bool asmopt_is_target_zen(asmopt_context* ctx) {
 }
 
 static bool asmopt_is_zero_guarded(asmopt_context* ctx, size_t line_no, const char* src, const char* syntax) {
-    if (!ctx || !src || line_no < 3) {
+    if (!ctx || !src || line_no < ZERO_GUARD_PATTERN_LINES) {
         return false;
     }
     size_t jump_index = line_no - 2;
