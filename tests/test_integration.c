@@ -25,6 +25,8 @@ static int test_complete_function() {
     TEST_ASSERT(ctx != NULL, "Failed to create context");
     asmopt_set_option(ctx, "hot_align", "1");
     asmopt_set_target_cpu(ctx, "zen3");
+    asmopt_set_amd_optimizations(ctx, 1);
+    asmopt_set_amd_optimizations(ctx, 1);
     
     const char* input = 
         ".text\n"
@@ -108,8 +110,8 @@ static int test_complete_function() {
        add-1/dec, sub-1/inc, and-self/test, cmp-self/test, and_zero/xor, sub-self/xor,
        redundant move keep, plus bsf/tzcnt. */
     TEST_ASSERT(replacements == 14, "Expected 14 replacements");
-    /* 9 removals: redundant mov, imul-by-1, add/sub zero, shift zero, or zero, xor zero,
-       and -1, fallthrough jump */
+    /* 10 removals: redundant mov, imul-by-1, add/sub zero, shift zero, or zero, xor zero,
+       and -1, fallthrough jump, redundant lea */
     TEST_ASSERT(removals == 9, "Expected 9 removals");
     
     free(output);
@@ -204,7 +206,6 @@ static int test_option_setting() {
     asmopt_set_option(ctx, "test_key", "test_value");
     asmopt_set_target_cpu(ctx, "zen3");
     asmopt_set_format(ctx, "intel");
-    asmopt_set_amd_optimizations(ctx, 1);
     
     /* These should not crash */
     asmopt_enable_optimization(ctx, "peephole");
@@ -349,6 +350,9 @@ static int test_comprehensive_report() {
         "test rbx, rbx\n"
         "jz .skip_bsf\n"
         "bsf rax, rbx\n"    /* Pattern 23 */
+        "jne .branch_true\n"
+        "jmp .branch_false\n"
+        ".branch_true:\n"
         ".skip_bsf:\n";
     
     asmopt_parse_string(ctx, input);
@@ -382,10 +386,11 @@ static int test_comprehensive_report() {
     TEST_ASSERT(strstr(report, "fallthrough_jump") != NULL, "Pattern 21 missing");
     TEST_ASSERT(strstr(report, "hot_loop_align") != NULL, "Pattern 22 missing");
     TEST_ASSERT(strstr(report, "bsf_to_tzcnt") != NULL, "Pattern 23 missing");
+    TEST_ASSERT(strstr(report, "invert_conditional_jump") != NULL, "Pattern 25 missing");
     
-    /* 14 replacements correspond to the list in test_complete_function (including bsf/tzcnt); 10 removals include lea. */
-    TEST_ASSERT(strstr(report, "Replacements: 14") != NULL, "Wrong replacement count");
-    TEST_ASSERT(strstr(report, "Removals: 10") != NULL, "Wrong removal count");
+    /* 15 replacements correspond to the list in test_complete_function (including bsf/tzcnt) plus branch inversion; 11 removals include lea + branch inversion. */
+    TEST_ASSERT(strstr(report, "Replacements: 15") != NULL, "Wrong replacement count");
+    TEST_ASSERT(strstr(report, "Removals: 11") != NULL, "Wrong removal count");
     
     free(report);
     asmopt_destroy(ctx);
