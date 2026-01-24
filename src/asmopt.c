@@ -770,6 +770,13 @@ static bool asmopt_is_immediate_minus_one(const char* operand, const char* synta
     return success && value == -1;
 }
 
+static bool asmopt_is_target_zen(asmopt_context* ctx) {
+    if (!ctx || !ctx->target_cpu) {
+        return false;
+    }
+    return asmopt_case_prefix_len(ctx->target_cpu, "zen");
+}
+
 static bool asmopt_is_power_of_two(long value) {
     return value > 0 && (value & (value - 1)) == 0;
 }
@@ -808,9 +815,9 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
     /*
      * Peephole Optimizer - Pattern Matching Engine
      * 
-     * This function implements 22 optimization patterns for x86-64 assembly:
-     * (7 identity + 1 redundant move + 12 replacements: 2,4,10,11,13-20 + 1 control-flow
-     *  + 1 cache-aware)
+     * This function implements 24 optimization patterns for x86-64 assembly:
+     * (7 identity + 1 redundant move + 14 replacements: 2,4,10,11,13-20 + 1 control-flow
+     *  + 1 cache-aware + 2 architecture-aware)
      * 
      * Identity/No-op Eliminations (7 patterns):
      *   Pattern 1: mov rax, rax            → (removed)        - Redundant self-move
@@ -843,6 +850,10 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
      * 
      * Cache-aware (1 pattern):
      *   Pattern 22: .hot_loop:             → .align 64 + label - Align hot loop headers
+     * 
+     * Architecture-aware (2 patterns):
+     *   Pattern 23: bsf reg, reg           → tzcnt reg, reg    - Zen BMI1 preference
+     *   Pattern 24: bsr reg, reg           → lzcnt reg, reg    - Zen BMI1 preference
      * 
      * Note: inc/dec create false dependencies on flags register (Pentium 4+), so patterns
      * 10-11 optimize for size. Future: make configurable (-Os vs -O3).
@@ -1420,6 +1431,70 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
             }
         }
         free(trimmed);
+    }
+
+    /* Pattern 23: bsf reg, reg -> tzcnt reg, reg (Zen/BMI1) */
+    if (strcmp(base_mnemonic, "bsf") == 0 && has_two_ops && dest_reg && src_reg && asmopt_is_target_zen(ctx)) {
+        char tzcnt_name[8];
+        if (suffix) {
+            snprintf(tzcnt_name, sizeof(tzcnt_name), "tzcnt%c", suffix);
+        } else {
+            snprintf(tzcnt_name, sizeof(tzcnt_name), "tzcnt");
+        }
+        char* trimmed_comment = asmopt_trim_comment(comment);
+        size_t new_len = strlen(indent) + strlen(tzcnt_name) + strlen(spacing) +
+                         strlen(dest) + strlen(pre_space) + strlen(post_space) + strlen(src) + 2;
+        if (!asmopt_is_blank(trimmed_comment)) {
+            new_len += strlen(trimmed_comment) + 1;
+        }
+        char* newline = malloc(new_len + 1);
+        if (newline) {
+            if (!asmopt_is_blank(trimmed_comment)) {
+                snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s %s",
+                         indent, tzcnt_name, spacing, dest, pre_space, post_space, src, trimmed_comment);
+            } else {
+                snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s",
+                         indent, tzcnt_name, spacing, dest, pre_space, post_space, src);
+            }
+            asmopt_record_optimization(ctx, line_no, "bsf_to_tzcnt", line, newline);
+            asmopt_store_optimized_line(ctx, newline);
+            free(newline);
+            *replaced = true;
+        }
+        free(trimmed_comment);
+        goto cleanup;
+    }
+
+    /* Pattern 24: bsr reg, reg -> lzcnt reg, reg (Zen/BMI1) */
+    if (strcmp(base_mnemonic, "bsr") == 0 && has_two_ops && dest_reg && src_reg && asmopt_is_target_zen(ctx)) {
+        char lzcnt_name[8];
+        if (suffix) {
+            snprintf(lzcnt_name, sizeof(lzcnt_name), "lzcnt%c", suffix);
+        } else {
+            snprintf(lzcnt_name, sizeof(lzcnt_name), "lzcnt");
+        }
+        char* trimmed_comment = asmopt_trim_comment(comment);
+        size_t new_len = strlen(indent) + strlen(lzcnt_name) + strlen(spacing) +
+                         strlen(dest) + strlen(pre_space) + strlen(post_space) + strlen(src) + 2;
+        if (!asmopt_is_blank(trimmed_comment)) {
+            new_len += strlen(trimmed_comment) + 1;
+        }
+        char* newline = malloc(new_len + 1);
+        if (newline) {
+            if (!asmopt_is_blank(trimmed_comment)) {
+                snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s %s",
+                         indent, lzcnt_name, spacing, dest, pre_space, post_space, src, trimmed_comment);
+            } else {
+                snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s",
+                         indent, lzcnt_name, spacing, dest, pre_space, post_space, src);
+            }
+            asmopt_record_optimization(ctx, line_no, "bsr_to_lzcnt", line, newline);
+            asmopt_store_optimized_line(ctx, newline);
+            free(newline);
+            *replaced = true;
+        }
+        free(trimmed_comment);
+        goto cleanup;
     }
 
     /* Pattern 3: imul/mul rax, 1 -> remove (identity) */
