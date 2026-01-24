@@ -782,7 +782,8 @@ static bool asmopt_is_target_zen(asmopt_context* ctx) {
     if (!ctx || !ctx->target_cpu) {
         return false;
     }
-    return asmopt_case_prefix_len(ctx->target_cpu, "zen");
+    const size_t prefix_len = strlen("zen");
+    return strlen(ctx->target_cpu) >= prefix_len && asmopt_case_prefix_len(ctx->target_cpu, "zen");
 }
 
 static bool asmopt_is_power_of_two(long value) {
