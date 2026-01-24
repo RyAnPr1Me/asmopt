@@ -2041,8 +2041,7 @@ static bool asmopt_invert_conditional_jump(const char* mnemonic, char* buffer, s
         {"jl", "jge"}, {"jnge", "jge"}, {"jge", "jl"}, {"jnl", "jl"},
         {"jle", "jg"}, {"jng", "jg"}, {"jg", "jle"}, {"jnle", "jle"},
         {"jo", "jno"}, {"jno", "jo"}, {"js", "jns"}, {"jns", "js"},
-        {"jp", "jnp"}, {"jpe", "jpo"}, {"jnp", "jp"}, {"jpo", "jpe"},
-        {"jcxz", "jecxz"}, {"jecxz", "jcxz"}
+        {"jp", "jnp"}, {"jpe", "jpo"}, {"jnp", "jp"}, {"jpo", "jpe"}
     };
     for (size_t i = 0; i < sizeof(pairs) / sizeof(pairs[0]); i++) {
         if (asmopt_casecmp(mnemonic, pairs[i][0]) == 0) {

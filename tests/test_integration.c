@@ -26,7 +26,6 @@ static int test_complete_function() {
     asmopt_set_option(ctx, "hot_align", "1");
     asmopt_set_target_cpu(ctx, "zen3");
     asmopt_set_amd_optimizations(ctx, 1);
-    asmopt_set_amd_optimizations(ctx, 1);
     
     const char* input = 
         ".text\n"
@@ -110,8 +109,8 @@ static int test_complete_function() {
        add-1/dec, sub-1/inc, and-self/test, cmp-self/test, and_zero/xor, sub-self/xor,
        redundant move keep, plus bsf/tzcnt. */
     TEST_ASSERT(replacements == 14, "Expected 14 replacements");
-    /* 10 removals: redundant mov, imul-by-1, add/sub zero, shift zero, or zero, xor zero,
-       and -1, fallthrough jump, redundant lea */
+    /* 9 removals: redundant mov, imul-by-1, add/sub zero, shift zero, or zero, xor zero,
+       and -1, fallthrough jump */
     TEST_ASSERT(removals == 9, "Expected 9 removals");
     
     free(output);
