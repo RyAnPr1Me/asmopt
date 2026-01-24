@@ -1497,6 +1497,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                                 }
                                 asmopt_record_optimization(ctx, line_no + 1, "redundant_move_pair", next_line, NULL);
                                 *removed = true;
+                                ctx->skip_next_line = true;
                                 free(next_op1);
                                 free(next_op2);
                                 free(next_pre);
@@ -1912,6 +1913,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                                                         }
                                                         *replaced = true;
                                                         *removed = true;
+                                                        ctx->skip_next_line = true;
                                                         free(trimmed_comment);
                                                         free(label_trimmed);
                                                         free(label_code);
@@ -2808,7 +2810,7 @@ int asmopt_optimize(asmopt_context* ctx) {
         if (removed) {
             ctx->stats.removals += 1;
         }
-        if (removed || skip_next) {
+        if (skip_next) {
             i++;
         }
     }
