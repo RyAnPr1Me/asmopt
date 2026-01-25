@@ -1416,9 +1416,8 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
 
     /* Pattern 28: mov rax, [mem] / add rax, imm / mov [mem], rax -> add [mem], imm */
     if (strcmp(base_mnemonic, "mov") == 0 && has_two_ops && dest_reg && src && !src_reg) {
-        size_t load_index = line_no - 1;
-        size_t add_index = load_index + 1;
-        size_t store_index = load_index + 2;
+        size_t add_index = line_no;
+        size_t store_index = line_no + 1;
         if (add_index < ctx->original_count && store_index < ctx->original_count) {
             const char* add_line = ctx->original_lines[add_index];
             const char* store_line = ctx->original_lines[store_index];
