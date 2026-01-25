@@ -1139,8 +1139,8 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
      * Peephole Optimizer - Pattern Matching Engine
      * 
      * This function implements 28 optimization patterns for x86-64 assembly:
-     * (8 identity + 2 redundant move + 14 replacements: 2,4,10,11,13-20,26-27 + 2 control-flow
-     *  + 1 cache-aware + 1 architecture-aware + 1 load-modify-store)
+     * (8 identity + 1 redundant move + 12 replacements: 2,4,10,11,13-20 + 2 control-flow
+     *  + 1 dead-store + 1 scheduling + 1 cache-aware + 1 architecture-aware + 1 load-modify-store)
      * 
      * Identity/No-op Eliminations (8 patterns):
      *   Pattern 1: mov rax, rax            → (removed)        - Redundant self-move
@@ -1558,7 +1558,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                                                     snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s",
                                                              indent, add_name, spacing, store_dest, add_pre, add_post, add_src);
                                                 }
-                                                size_t combo_len = strlen(line) + strlen(add_line) + strlen(store_line) + 3;
+                                                size_t combo_len = strlen(line) + strlen(add_line) + strlen(store_line) + 2;
                                                 char* combined = malloc(combo_len + 1);
                                                 if (combined) {
                                                     snprintf(combined, combo_len + 1, "%s\n%s\n%s", line, add_line, store_line);
