@@ -539,6 +539,13 @@ static bool asmopt_parse_operands(const char* operands, char** op1, char** op2, 
     }
     *pre_space = asmopt_strdup(left + left_trimmed);
     *post_space = asmopt_strdup(right);
+    if (!*pre_space || !*post_space) {
+        free(*pre_space);
+        free(*post_space);
+        free(left);
+        free(right);
+        return false;
+    }
     (*post_space)[right_trimmed] = '\0';
     *op1 = asmopt_strip(left);
     *op2 = asmopt_strip(right);
@@ -2606,11 +2613,11 @@ static void asmopt_build_ir(asmopt_context* ctx) {
         }
         free(code);
         free(comment);
-        free(trimmed);
         if (!entry.kind) {
             entry.kind = asmopt_strdup("text");
             entry.text = asmopt_strdup(trimmed ? trimmed : "");
         }
+        free(trimmed);
         ctx->ir[ctx->ir_count++] = entry;
     }
 }
