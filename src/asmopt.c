@@ -3000,8 +3000,12 @@ static char* asmopt_read_file(const char* filename) {
         return NULL;
     }
     size_t read = fread(buffer, 1, (size_t)length, handle);
-    buffer[read] = '\0';
     fclose(handle);
+    if (read != (size_t)length) {
+        free(buffer);
+        return NULL;
+    }
+    buffer[read] = '\0';
     return buffer;
 }
 
