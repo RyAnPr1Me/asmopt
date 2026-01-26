@@ -108,7 +108,7 @@ struct asmopt_context {
     size_t opt_event_capacity;
     /* Flag to enable hot loop alignment when hot_align option is set */
     bool insert_hot_align;
-    bool skip_next_line;
+    size_t skip_lines;
 };
 
 /* Instruction mnemonics that can have AT&T syntax suffixes (b, w, l, q) */
@@ -1138,9 +1138,9 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
     /*
      * Peephole Optimizer - Pattern Matching Engine
      * 
-     * This function implements 27 optimization patterns for x86-64 assembly:
-     * (8 identity + 1 redundant move + 14 replacements: 2,4,10,11,13-20,26-27 + 2 control-flow
-     *  + 1 cache-aware + 1 architecture-aware)
+     * This function implements 28 optimization patterns for x86-64 assembly:
+     * (8 identity + 1 redundant move + 12 instruction replacements + 2 control-flow
+     *  + 1 dead-store + 1 scheduling + 1 cache-aware + 1 architecture-aware + 1 load-modify-store)
      * 
      * Identity/No-op Eliminations (8 patterns):
      *   Pattern 1: mov rax, rax            → (removed)        - Redundant self-move
@@ -1179,6 +1179,9 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
      * Scheduling (1 pattern):
      *   Pattern 27: mov r1, r2 + mov r3, r4 → mov r3, r4 + mov r1, r2 - Move hoist
      * 
+     * Load-modify-store (1 pattern):
+     *   Pattern 28: mov r1, [mem] + add r1, imm + mov [mem], r1 → add [mem], imm
+     * 
      * Cache-aware (1 pattern):
      *   Pattern 22: .hot_loop:             → .align 64 + label - Align hot loop headers
      * 
@@ -1192,7 +1195,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
      */
     *replaced = false;
     *removed = false;
-    ctx->skip_next_line = false;
+    ctx->skip_lines = 0;
     char* code = NULL;
     char* comment = NULL;
     asmopt_split_comment(line, &code, &comment);
@@ -1371,7 +1374,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                     asmopt_store_optimized_line(ctx, next_line);
                     *removed = true;
                     *replaced = true;
-                    ctx->skip_next_line = true;
+                    ctx->skip_lines = 1;
                     free(next_dest);
                     free(next_src);
                     goto cleanup;
@@ -1400,7 +1403,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                     asmopt_store_optimized_line(ctx, next_line);
                     asmopt_store_optimized_line(ctx, line);
                     *replaced = true;
-                    ctx->skip_next_line = true;
+                    ctx->skip_lines = 1;
                     free(next_dest);
                     free(next_src);
                     goto cleanup;
@@ -1408,6 +1411,241 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
             }
             free(next_dest);
             free(next_src);
+        }
+    }
+
+    /* Pattern 28: mov rax, [mem] / add rax, imm / mov [mem], rax -> add [mem], imm */
+    if (strcmp(base_mnemonic, "mov") == 0 && has_two_ops && dest_reg && src && !src_reg) {
+        size_t add_index = line_no;
+        size_t store_index = line_no + 1;
+        if (add_index < ctx->original_count && store_index < ctx->original_count) {
+            const char* add_line = ctx->original_lines[add_index];
+            const char* store_line = ctx->original_lines[store_index];
+            char* add_code = NULL;
+            char* add_comment = NULL;
+            asmopt_split_comment(add_line, &add_code, &add_comment);
+            if (add_code && !asmopt_is_directive_or_label(add_code)) {
+                char* add_indent = NULL;
+                char* add_mnemonic = NULL;
+                char* add_spacing = NULL;
+                char* add_operands = NULL;
+                if (asmopt_parse_instruction(add_code, &add_indent, &add_mnemonic, &add_spacing, &add_operands)) {
+                    char add_lower[32];
+                    size_t add_len = strlen(add_mnemonic);
+                    if (add_len >= sizeof(add_lower)) {
+                        add_len = sizeof(add_lower) - 1;
+                    }
+                    for (size_t i = 0; i < add_len; i++) {
+                        add_lower[i] = (char)tolower((unsigned char)add_mnemonic[i]);
+                    }
+                    add_lower[add_len] = '\0';
+                    char add_suffix = '\0';
+                    char add_base[32] = {0};
+                    size_t add_actual = strlen(add_lower);
+                    bool add_can_suffix = false;
+                    for (size_t i = 0; i < SUFFIX_MNEMONICS_COUNT; i++) {
+                        size_t base_len = strlen(SUFFIX_MNEMONICS[i]);
+                        if (add_actual == base_len + 1 &&
+                            strncmp(add_lower, SUFFIX_MNEMONICS[i], base_len) == 0) {
+                            add_can_suffix = true;
+                            break;
+                        }
+                    }
+                    if (add_can_suffix && add_actual >= 4) {
+                        char last_char = add_lower[add_actual - 1];
+                        if (last_char == 'b' || last_char == 'w' || last_char == 'l' || last_char == 'q') {
+                            add_suffix = last_char;
+                            strncpy(add_base, add_lower, add_actual - 1);
+                            add_base[add_actual - 1] = '\0';
+                        } else {
+                            strcpy(add_base, add_lower);
+                        }
+                    } else {
+                        strcpy(add_base, add_lower);
+                    }
+                    char* add_op1 = NULL;
+                    char* add_op2 = NULL;
+                    char* add_pre = NULL;
+                    char* add_post = NULL;
+                    bool add_two_ops = asmopt_parse_operands(add_operands, &add_op1, &add_op2, &add_pre, &add_post);
+                    if (add_two_ops && strcmp(add_base, "add") == 0) {
+                        const char* add_dest = NULL;
+                        const char* add_src = NULL;
+                        if (syntax && strcmp(syntax, "att") == 0) {
+                            add_src = add_op1;
+                            add_dest = add_op2;
+                        } else {
+                            add_dest = add_op1;
+                            add_src = add_op2;
+                        }
+                        bool add_immediate = false;
+                        asmopt_parse_immediate(add_src, syntax, &add_immediate);
+                        if (add_dest && add_src && asmopt_is_register(add_dest, syntax) &&
+                            asmopt_casecmp(add_dest, dest) == 0 && add_immediate) {
+                            char* store_code = NULL;
+                            char* store_comment = NULL;
+                            asmopt_split_comment(store_line, &store_code, &store_comment);
+                            if (store_code && !asmopt_is_directive_or_label(store_code)) {
+                                char* store_indent = NULL;
+                                char* store_mnemonic = NULL;
+                                char* store_spacing = NULL;
+                                char* store_operands = NULL;
+                                if (asmopt_parse_instruction(store_code, &store_indent, &store_mnemonic, &store_spacing, &store_operands)) {
+                                    char store_lower[32];
+                                    size_t store_len = strlen(store_mnemonic);
+                                    if (store_len >= sizeof(store_lower)) {
+                                        store_len = sizeof(store_lower) - 1;
+                                    }
+                                    for (size_t i = 0; i < store_len; i++) {
+                                        store_lower[i] = (char)tolower((unsigned char)store_mnemonic[i]);
+                                    }
+                                    store_lower[store_len] = '\0';
+                                    char store_base[32] = {0};
+                                    size_t store_actual = strlen(store_lower);
+                                    bool store_can_suffix = false;
+                                    for (size_t i = 0; i < SUFFIX_MNEMONICS_COUNT; i++) {
+                                        size_t base_len = strlen(SUFFIX_MNEMONICS[i]);
+                                        if (store_actual == base_len + 1 &&
+                                            strncmp(store_lower, SUFFIX_MNEMONICS[i], base_len) == 0) {
+                                            store_can_suffix = true;
+                                            break;
+                                        }
+                                    }
+                                    if (store_can_suffix && store_actual >= 4) {
+                                        char last_char = store_lower[store_actual - 1];
+                                        if (last_char == 'b' || last_char == 'w' || last_char == 'l' || last_char == 'q') {
+                                            strncpy(store_base, store_lower, store_actual - 1);
+                                            store_base[store_actual - 1] = '\0';
+                                        } else {
+                                            strcpy(store_base, store_lower);
+                                        }
+                                    } else {
+                                        strcpy(store_base, store_lower);
+                                    }
+                                    char* store_op1 = NULL;
+                                    char* store_op2 = NULL;
+                                    char* store_pre = NULL;
+                                    char* store_post = NULL;
+                                    bool store_two_ops = asmopt_parse_operands(store_operands, &store_op1, &store_op2, &store_pre, &store_post);
+                                    if (store_two_ops && strcmp(store_base, "mov") == 0) {
+                                        const char* store_dest = NULL;
+                                        const char* store_src = NULL;
+                                        if (syntax && strcmp(syntax, "att") == 0) {
+                                            store_src = store_op1;
+                                            store_dest = store_op2;
+                                        } else {
+                                            store_dest = store_op1;
+                                            store_src = store_op2;
+                                        }
+                                        if (store_dest && store_src &&
+                                            asmopt_is_register(store_src, syntax) &&
+                                            asmopt_casecmp(store_src, dest) == 0 &&
+                                            asmopt_casecmp(store_dest, src) == 0) {
+                                            char add_name[8];
+                                            asmopt_build_suffixed_name(add_name, sizeof(add_name), "add", add_suffix);
+                                            char* trimmed_comment = asmopt_trim_comment(comment);
+                                            size_t new_len = strlen(indent) + strlen(add_name) + strlen(spacing) +
+                                                             strlen(store_dest) + strlen(add_pre) + strlen(add_post) + strlen(add_src) + 2;
+                                            if (!asmopt_is_blank(trimmed_comment)) {
+                                                new_len += strlen(trimmed_comment) + 1;
+                                            }
+                                            char* newline = malloc(new_len + 1);
+                                            if (newline) {
+                                                if (!asmopt_is_blank(trimmed_comment)) {
+                                                    snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s %s",
+                                                             indent, add_name, spacing, store_dest, add_pre, add_post, add_src, trimmed_comment);
+                                                } else {
+                                                    snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s",
+                                                             indent, add_name, spacing, store_dest, add_pre, add_post, add_src);
+                                                }
+                                                size_t combo_len = strlen(line) + strlen(add_line) + strlen(store_line) + 2;
+                                                char* combined = malloc(combo_len + 1);
+                                                if (combined) {
+                                                    snprintf(combined, combo_len + 1, "%s\n%s\n%s", line, add_line, store_line);
+                                                    asmopt_record_optimization(ctx, line_no, "load_modify_store", combined, newline);
+                                                    free(combined);
+                                                } else {
+                                                    asmopt_record_optimization(ctx, line_no, "load_modify_store", line, newline);
+                                                }
+                                                asmopt_store_optimized_line(ctx, newline);
+                                                free(newline);
+                                                if (!asmopt_is_blank(add_comment)) {
+                                                    char* trimmed_add_comment = asmopt_trim_comment(add_comment);
+                                                    size_t add_len = strlen(add_indent) + strlen(trimmed_add_comment) + 1;
+                                                    char* add_comment_line = malloc(add_len + 1);
+                                                    if (add_comment_line) {
+                                                        snprintf(add_comment_line, add_len + 1, "%s%s", add_indent, trimmed_add_comment);
+                                                        asmopt_store_optimized_line(ctx, add_comment_line);
+                                                        free(add_comment_line);
+                                                    }
+                                                    free(trimmed_add_comment);
+                                                }
+                                                if (!asmopt_is_blank(store_comment)) {
+                                                    char* trimmed_store_comment = asmopt_trim_comment(store_comment);
+                                                    size_t store_len = strlen(store_indent) + strlen(trimmed_store_comment) + 1;
+                                                    char* store_comment_line = malloc(store_len + 1);
+                                                    if (store_comment_line) {
+                                                        snprintf(store_comment_line, store_len + 1, "%s%s", store_indent, trimmed_store_comment);
+                                                        asmopt_store_optimized_line(ctx, store_comment_line);
+                                                        free(store_comment_line);
+                                                    }
+                                                    free(trimmed_store_comment);
+                                                }
+                                                *replaced = true;
+                                                *removed = true;
+                                                ctx->skip_lines = 2;
+                                                free(trimmed_comment);
+                                                free(store_op1);
+                                                free(store_op2);
+                                                free(store_pre);
+                                                free(store_post);
+                                                free(store_indent);
+                                                free(store_mnemonic);
+                                                free(store_spacing);
+                                                free(store_operands);
+                                                free(store_code);
+                                                free(store_comment);
+                                                free(add_op1);
+                                                free(add_op2);
+                                                free(add_pre);
+                                                free(add_post);
+                                                free(add_indent);
+                                                free(add_mnemonic);
+                                                free(add_spacing);
+                                                free(add_operands);
+                                                free(add_code);
+                                                free(add_comment);
+                                                goto cleanup;
+                                            }
+                                            free(trimmed_comment);
+                                        }
+                                    }
+                                    free(store_op1);
+                                    free(store_op2);
+                                    free(store_pre);
+                                    free(store_post);
+                                }
+                                free(store_indent);
+                                free(store_mnemonic);
+                                free(store_spacing);
+                                free(store_operands);
+                            }
+                            free(store_code);
+                            free(store_comment);
+                        }
+                    }
+                    free(add_op1);
+                    free(add_op2);
+                    free(add_pre);
+                    free(add_post);
+                }
+                free(add_indent);
+                free(add_mnemonic);
+                free(add_spacing);
+                free(add_operands);
+            }
+            free(add_code);
+            free(add_comment);
         }
     }
 
@@ -1501,7 +1739,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                                 }
                                 asmopt_record_optimization(ctx, line_no + 1, "redundant_move_pair", next_line, NULL);
                                 *removed = true;
-                                ctx->skip_next_line = true;
+                                ctx->skip_lines = 1;
                                 free(next_op1);
                                 free(next_op2);
                                 free(next_pre);
@@ -1917,7 +2155,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                                                         }
                                                         *replaced = true;
                                                         *removed = true;
-                                                        ctx->skip_next_line = true;
+                                                        ctx->skip_lines = 1;
                                                         free(trimmed_comment);
                                                         free(label_trimmed);
                                                         free(label_code);
@@ -2806,16 +3044,16 @@ int asmopt_optimize(asmopt_context* ctx) {
         bool replaced = false;
         bool removed = false;
         asmopt_peephole_line(ctx, i + 1, ctx->original_lines[i], syntax, &replaced, &removed);
-        bool skip_next = ctx->skip_next_line;
-        ctx->skip_next_line = false;
+        size_t skip_lines = ctx->skip_lines;
+        ctx->skip_lines = 0;
         if (replaced) {
             ctx->stats.replacements += 1;
         }
         if (removed) {
             ctx->stats.removals += 1;
         }
-        if (skip_next) {
-            i++;
+        if (skip_lines > 0) {
+            i += skip_lines;
         }
     }
     if (!do_opt) {

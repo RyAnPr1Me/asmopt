@@ -580,6 +580,26 @@ static int test_dead_store_move() {
     TEST_PASS("test_dead_store_move");
 }
 
+/* Test Pattern 28: load-modify-store to memory add */
+static int test_load_modify_store() {
+    asmopt_context* ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    
+    const char* input = "mov rax, [rbx]\nadd rax, 5\nmov [rbx], rax\n";
+    asmopt_parse_string(ctx, input);
+    asmopt_optimize(ctx);
+    
+    char* output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "add [rbx], 5") != NULL, "Load-modify-store not optimized");
+    TEST_ASSERT(strstr(output, "mov rax, [rbx]") == NULL, "Load should be removed");
+    TEST_ASSERT(strstr(output, "mov [rbx], rax") == NULL, "Store should be removed");
+    
+    free(output);
+    asmopt_destroy(ctx);
+    TEST_PASS("test_load_modify_store");
+}
+
 /* Test Pattern 27: schedule swap for independent moves */
 static int test_schedule_swap_move() {
     asmopt_context* ctx = asmopt_create("x86-64");
@@ -648,6 +668,7 @@ int main() {
     total++; passed += test_bsf_to_tzcnt();
     total++; passed += test_invert_conditional_jump();
     total++; passed += test_dead_store_move();
+    total++; passed += test_load_modify_store();
     total++; passed += test_schedule_swap_move();
     total++; passed += test_optimization_stats();
     total++; passed += test_report_generation();
