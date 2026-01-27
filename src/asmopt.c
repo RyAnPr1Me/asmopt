@@ -339,6 +339,10 @@ static void asmopt_split_lines(asmopt_context* ctx, const char* text) {
     ctx->trailing_newline = length > 0 && text[length - 1] == '\n';
     size_t capacity = 16;
     ctx->original_lines = malloc(sizeof(char*) * capacity);
+    if (!ctx->original_lines) {
+        ctx->original_count = 0;
+        return;
+    }
     ctx->original_count = 0;
     size_t start = 0;
     for (size_t i = 0; i <= length; i++) {
@@ -535,6 +539,13 @@ static bool asmopt_parse_operands(const char* operands, char** op1, char** op2, 
     }
     *pre_space = asmopt_strdup(left + left_trimmed);
     *post_space = asmopt_strdup(right);
+    if (!*pre_space || !*post_space) {
+        free(*pre_space);
+        free(*post_space);
+        free(left);
+        free(right);
+        return false;
+    }
     (*post_space)[right_trimmed] = '\0';
     *op1 = asmopt_strip(left);
     *op2 = asmopt_strip(right);
@@ -2521,6 +2532,10 @@ static void asmopt_build_ir(asmopt_context* ctx) {
     }
     asmopt_reset_ir(ctx);
     ctx->ir = calloc(ctx->original_count, sizeof(asmopt_ir_line));
+    if (!ctx->ir) {
+        ctx->ir_count = 0;
+        return;
+    }
     ctx->ir_count = 0;
     for (size_t i = 0; i < ctx->original_count; i++) {
         char* line = ctx->original_lines[i];
@@ -2598,11 +2613,11 @@ static void asmopt_build_ir(asmopt_context* ctx) {
         }
         free(code);
         free(comment);
-        free(trimmed);
         if (!entry.kind) {
             entry.kind = asmopt_strdup("text");
             entry.text = asmopt_strdup(trimmed ? trimmed : "");
         }
+        free(trimmed);
         ctx->ir[ctx->ir_count++] = entry;
     }
 }
@@ -2726,6 +2741,12 @@ static void asmopt_build_cfg(asmopt_context* ctx) {
 
     if (block_count == 0) {
         blocks = calloc(1, sizeof(asmopt_cfg_block));
+        if (!blocks) {
+            ctx->cfg_blocks = NULL;
+            ctx->cfg_block_count = 0;
+            free(label_names);
+            return;
+        }
         block_count = 1;
         blocks[0].name = asmopt_strdup("block0");
         blocks[0].instructions = NULL;
@@ -2979,8 +3000,12 @@ static char* asmopt_read_file(const char* filename) {
         return NULL;
     }
     size_t read = fread(buffer, 1, (size_t)length, handle);
-    buffer[read] = '\0';
     fclose(handle);
+    if (read != (size_t)length) {
+        free(buffer);
+        return NULL;
+    }
+    buffer[read] = '\0';
     return buffer;
 }
 
