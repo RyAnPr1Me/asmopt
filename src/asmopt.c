@@ -1589,10 +1589,10 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                                                 first_op = add_src;
                                                 second_op = store_dest;
                                             }
-                                            const size_t operand_separator_len = 1;
+                                            const size_t comma_len = 1;
                                             size_t new_len = strlen(indent) + strlen(add_name) + strlen(spacing) +
                                                              strlen(first_op) + strlen(add_pre) + strlen(add_post) +
-                                                             strlen(second_op) + operand_separator_len;
+                                                             strlen(second_op) + comma_len;
                                             if (!asmopt_is_blank(trimmed_comment)) {
                                                 new_len += strlen(trimmed_comment) + 1;
                                             }
