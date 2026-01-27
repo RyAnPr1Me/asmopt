@@ -519,29 +519,28 @@ static bool asmopt_parse_operands(const char* operands, char** op1, char** op2, 
     const char* comma = NULL;
     int paren_depth = 0;
     int bracket_depth = 0;
+    bool invalid_depth = false;
     for (const char* ptr = operands; *ptr; ptr++) {
         if (*ptr == '(') {
             paren_depth++;
         } else if (*ptr == ')') {
-            if (paren_depth > 0) {
-                paren_depth--;
-            } else {
-                return false;
+            paren_depth--;
+            if (paren_depth < 0) {
+                invalid_depth = true;
             }
         } else if (*ptr == '[') {
             bracket_depth++;
         } else if (*ptr == ']') {
-            if (bracket_depth > 0) {
-                bracket_depth--;
-            } else {
-                return false;
+            bracket_depth--;
+            if (bracket_depth < 0) {
+                invalid_depth = true;
             }
         } else if (*ptr == ',' && paren_depth == 0 && bracket_depth == 0) {
             comma = ptr;
             break;
         }
     }
-    if (!comma) {
+    if (invalid_depth || paren_depth != 0 || bracket_depth != 0 || !comma) {
         return false;
     }
     size_t left_len = (size_t)(comma - operands);
@@ -1592,11 +1591,10 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                                             size_t new_len = strlen(indent) + strlen(add_name) + strlen(spacing) +
                                                              strlen(first_op) + strlen(add_pre) + strlen(add_post) +
                                                              strlen(second_op) + operand_separator_len;
-                                            size_t buffer_len = new_len + 1;
                                             if (!asmopt_is_blank(trimmed_comment)) {
                                                 new_len += strlen(trimmed_comment) + 1;
-                                                buffer_len = new_len + 1;
                                             }
+                                            size_t buffer_len = new_len + 1;
                                             char* newline = malloc(buffer_len);
                                             if (newline) {
                                                 if (!asmopt_is_blank(trimmed_comment)) {
