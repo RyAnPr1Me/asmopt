@@ -532,7 +532,7 @@ static bool asmopt_parse_operands(const char* operands, char** op1, char** op2, 
             if (bracket_depth > 0) {
                 bracket_depth--;
             } else {
-                bracket_depth = 0;
+                return false;
             }
         } else if (*ptr == ',' && paren_depth == 0 && bracket_depth == 0) {
             comma = ptr;
@@ -1586,7 +1586,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                                                 first_op = add_src;
                                                 second_op = store_dest;
                                             }
-                                            const size_t operand_separator_len = 1;
+                                            const size_t operand_separator_len = strlen(",");
                                             size_t new_len = strlen(indent) + strlen(add_name) + strlen(spacing) +
                                                              strlen(first_op) + strlen(add_pre) + strlen(add_post) +
                                                              strlen(second_op) + operand_separator_len;
