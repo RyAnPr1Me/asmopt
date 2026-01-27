@@ -527,6 +527,7 @@ static bool asmopt_parse_operands(const char* operands, char** op1, char** op2, 
             paren_depth--;
             if (paren_depth < 0) {
                 invalid_depth = true;
+                break;
             }
         } else if (*ptr == '[') {
             bracket_depth++;
@@ -534,6 +535,7 @@ static bool asmopt_parse_operands(const char* operands, char** op1, char** op2, 
             bracket_depth--;
             if (bracket_depth < 0) {
                 invalid_depth = true;
+                break;
             }
         } else if (*ptr == ',' && paren_depth == 0 && bracket_depth == 0) {
             comma = ptr;
