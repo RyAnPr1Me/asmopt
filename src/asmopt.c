@@ -513,7 +513,30 @@ static char* asmopt_strip(const char* value) {
 }
 
 static bool asmopt_parse_operands(const char* operands, char** op1, char** op2, char** pre_space, char** post_space) {
-    const char* comma = operands ? strchr(operands, ',') : NULL;
+    if (!operands) {
+        return false;
+    }
+    const char* comma = NULL;
+    int paren_depth = 0;
+    int bracket_depth = 0;
+    for (const char* ptr = operands; *ptr; ptr++) {
+        if (*ptr == '(') {
+            paren_depth++;
+        } else if (*ptr == ')') {
+            if (paren_depth > 0) {
+                paren_depth--;
+            }
+        } else if (*ptr == '[') {
+            bracket_depth++;
+        } else if (*ptr == ']') {
+            if (bracket_depth > 0) {
+                bracket_depth--;
+            }
+        } else if (*ptr == ',' && paren_depth == 0 && bracket_depth == 0) {
+            comma = ptr;
+            break;
+        }
+    }
     if (!comma) {
         return false;
     }
@@ -1555,8 +1578,14 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                                             char add_name[8];
                                             asmopt_build_suffixed_name(add_name, sizeof(add_name), "add", add_suffix);
                                             char* trimmed_comment = asmopt_trim_comment(comment);
+                                            const char* first_op = store_dest;
+                                            const char* second_op = add_src;
+                                            if (syntax && strcmp(syntax, "att") == 0) {
+                                                first_op = add_src;
+                                                second_op = store_dest;
+                                            }
                                             size_t new_len = strlen(indent) + strlen(add_name) + strlen(spacing) +
-                                                             strlen(store_dest) + strlen(add_pre) + strlen(add_post) + strlen(add_src) + 2;
+                                                             strlen(first_op) + strlen(add_pre) + strlen(add_post) + strlen(second_op) + 2;
                                             if (!asmopt_is_blank(trimmed_comment)) {
                                                 new_len += strlen(trimmed_comment) + 1;
                                             }
@@ -1564,10 +1593,10 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                                             if (newline) {
                                                 if (!asmopt_is_blank(trimmed_comment)) {
                                                     snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s %s",
-                                                             indent, add_name, spacing, store_dest, add_pre, add_post, add_src, trimmed_comment);
+                                                             indent, add_name, spacing, first_op, add_pre, add_post, second_op, trimmed_comment);
                                                 } else {
                                                     snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s",
-                                                             indent, add_name, spacing, store_dest, add_pre, add_post, add_src);
+                                                             indent, add_name, spacing, first_op, add_pre, add_post, second_op);
                                                 }
                                                 size_t combo_len = strlen(line) + strlen(add_line) + strlen(store_line) + 2;
                                                 char* combined = malloc(combo_len + 1);
