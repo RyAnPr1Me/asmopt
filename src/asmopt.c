@@ -1592,16 +1592,18 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                                             size_t new_len = strlen(indent) + strlen(add_name) + strlen(spacing) +
                                                              strlen(first_op) + strlen(add_pre) + strlen(add_post) +
                                                              strlen(second_op) + operand_separator_len;
+                                            size_t buffer_len = new_len + 1;
                                             if (!asmopt_is_blank(trimmed_comment)) {
                                                 new_len += strlen(trimmed_comment) + 1;
+                                                buffer_len = new_len + 1;
                                             }
-                                            char* newline = malloc(new_len + 1);
+                                            char* newline = malloc(buffer_len);
                                             if (newline) {
                                                 if (!asmopt_is_blank(trimmed_comment)) {
-                                                    snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s %s",
+                                                    snprintf(newline, buffer_len, "%s%s%s%s%s,%s%s %s",
                                                              indent, add_name, spacing, first_op, add_pre, add_post, second_op, trimmed_comment);
                                                 } else {
-                                                    snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s",
+                                                    snprintf(newline, buffer_len, "%s%s%s%s%s,%s%s",
                                                              indent, add_name, spacing, first_op, add_pre, add_post, second_op);
                                                 }
                                                 size_t combo_len = strlen(line) + strlen(add_line) + strlen(store_line) + 2;
