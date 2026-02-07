@@ -513,8 +513,36 @@ static char* asmopt_strip(const char* value) {
 }
 
 static bool asmopt_parse_operands(const char* operands, char** op1, char** op2, char** pre_space, char** post_space) {
-    const char* comma = operands ? strchr(operands, ',') : NULL;
-    if (!comma) {
+    if (!operands) {
+        return false;
+    }
+    const char* comma = NULL;
+    int paren_depth = 0;
+    int bracket_depth = 0;
+    bool invalid_depth = false;
+    for (const char* ptr = operands; *ptr; ptr++) {
+        if (*ptr == '(') {
+            paren_depth++;
+        } else if (*ptr == ')') {
+            paren_depth--;
+            if (paren_depth < 0) {
+                invalid_depth = true;
+                break;
+            }
+        } else if (*ptr == '[') {
+            bracket_depth++;
+        } else if (*ptr == ']') {
+            bracket_depth--;
+            if (bracket_depth < 0) {
+                invalid_depth = true;
+                break;
+            }
+        } else if (*ptr == ',' && paren_depth == 0 && bracket_depth == 0) {
+            comma = ptr;
+            break;
+        }
+    }
+    if (invalid_depth || paren_depth != 0 || bracket_depth != 0 || !comma) {
         return false;
     }
     size_t left_len = (size_t)(comma - operands);
@@ -1555,19 +1583,28 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                                             char add_name[8];
                                             asmopt_build_suffixed_name(add_name, sizeof(add_name), "add", add_suffix);
                                             char* trimmed_comment = asmopt_trim_comment(comment);
+                                            const char* first_op = store_dest;
+                                            const char* second_op = add_src;
+                                            if (syntax && strcmp(syntax, "att") == 0) {
+                                                first_op = add_src;
+                                                second_op = store_dest;
+                                            }
+                                            const size_t comma_len = 1;
                                             size_t new_len = strlen(indent) + strlen(add_name) + strlen(spacing) +
-                                                             strlen(store_dest) + strlen(add_pre) + strlen(add_post) + strlen(add_src) + 2;
+                                                             strlen(first_op) + strlen(add_pre) + strlen(add_post) +
+                                                             strlen(second_op) + comma_len;
                                             if (!asmopt_is_blank(trimmed_comment)) {
                                                 new_len += strlen(trimmed_comment) + 1;
                                             }
-                                            char* newline = malloc(new_len + 1);
+                                            size_t buffer_len = new_len + 1;
+                                            char* newline = malloc(buffer_len);
                                             if (newline) {
                                                 if (!asmopt_is_blank(trimmed_comment)) {
-                                                    snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s %s",
-                                                             indent, add_name, spacing, store_dest, add_pre, add_post, add_src, trimmed_comment);
+                                                    snprintf(newline, buffer_len, "%s%s%s%s%s,%s%s %s",
+                                                             indent, add_name, spacing, first_op, add_pre, add_post, second_op, trimmed_comment);
                                                 } else {
-                                                    snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s",
-                                                             indent, add_name, spacing, store_dest, add_pre, add_post, add_src);
+                                                    snprintf(newline, buffer_len, "%s%s%s%s%s,%s%s",
+                                                             indent, add_name, spacing, first_op, add_pre, add_post, second_op);
                                                 }
                                                 size_t combo_len = strlen(line) + strlen(add_line) + strlen(store_line) + 2;
                                                 char* combined = malloc(combo_len + 1);

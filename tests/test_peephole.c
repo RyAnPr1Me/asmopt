@@ -597,6 +597,22 @@ static int test_load_modify_store() {
     
     free(output);
     asmopt_destroy(ctx);
+
+    ctx = asmopt_create("x86-64");
+    TEST_ASSERT(ctx != NULL, "Failed to create context");
+    asmopt_set_format(ctx, "att");
+    const char* att_input = "movq (%rbx,%rcx,4), %rax\naddq $5, %rax\nmovq %rax, (%rbx,%rcx,4)\n";
+    asmopt_parse_string(ctx, att_input);
+    asmopt_optimize(ctx);
+
+    output = asmopt_generate_assembly(ctx);
+    TEST_ASSERT(output != NULL, "Failed to generate output");
+    TEST_ASSERT(strstr(output, "addq $5, (%rbx,%rcx,4)") != NULL, "AT&T load-modify-store not optimized");
+    TEST_ASSERT(strstr(output, "movq (%rbx,%rcx,4), %rax") == NULL, "AT&T load should be removed");
+    TEST_ASSERT(strstr(output, "movq %rax, (%rbx,%rcx,4)") == NULL, "AT&T store should be removed");
+
+    free(output);
+    asmopt_destroy(ctx);
     TEST_PASS("test_load_modify_store");
 }
 
