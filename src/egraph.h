@@ -19,6 +19,10 @@
 #ifndef EGRAPH_H
 #define EGRAPH_H
 
+/* Forward declaration so egraph.h does not need to include cpu_model.h.
+   cpu_model.h may then include egraph.h for EgOp without a circular dep. */
+typedef struct EgCpuModel_tag EgCpuModel;
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -167,10 +171,11 @@ bool     eg_is_power_of_two(EGraph *g, uint32_t id, int *out_log2);
 bool     eg_is_var(EGraph *g, uint32_t id, const char **out_name);
 
 /* Cost-based extraction: sets class->cost and class->best for every class.
-   Must be called after the final eg_rebuild(). */
-void     eg_compute_costs(EGraph *g);
+   Must be called after the final eg_rebuild().
+   m: optional CPU model; if NULL the generic model is used. */
+void     eg_compute_costs(EGraph *g, const struct EgCpuModel_tag *m);
 
-/* Return the base instruction cost for an operation (latency heuristic). */
-double   eg_op_cost(EgOp op);
+/* Return the base instruction cost for op on model m (generic if m==NULL). */
+double   eg_op_cost(const struct EgCpuModel_tag *m, EgOp op);
 
 #endif /* EGRAPH_H */

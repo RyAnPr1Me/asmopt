@@ -4,6 +4,7 @@
  */
 
 #include "egraph.h"
+#include "cpu_model.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -437,76 +438,21 @@ bool eg_is_var(EGraph *g, uint32_t id, const char **out_name)
 
 /* ── Cost model ─────────────────────────────────────────────────────────── */
 
-/* Approximate AMD Zen 3 latency-based costs (lower = better). */
-double eg_op_cost(EgOp op)
+/*
+ * Delegate to the CPU model so the e-graph uses the real per-microarchitecture
+ * reciprocal-throughput costs rather than a hard-coded Zen 3 table.
+ * If m is NULL the generic (conservative) model is used.
+ */
+double eg_op_cost(const EgCpuModel *m, EgOp op)
 {
-    switch (op) {
-    case EG_CONST:   return 0.0;
-    case EG_VAR:     return 0.0;
-
-    /* Fast integer ALU — 1 cycle latency */
-    case EG_ADD:
-    case EG_SUB:
-    case EG_AND:
-    case EG_OR:
-    case EG_XOR:
-    case EG_NOT:
-    case EG_NEG:
-    case EG_SHL:
-    case EG_SHR:
-    case EG_SAR:
-    case EG_ROL:
-    case EG_ROR:
-    case EG_INC:
-    case EG_DEC:
-        return 1.0;
-
-    /* LEA: 1–3 cycles depending on complexity; use 1.5 as default */
-    case EG_LEA:
-        return 1.5;
-
-    /* Signed multiply: 3 cycles on Zen 3 */
-    case EG_IMUL:
-        return 3.0;
-
-    /* Unsigned full multiply: 3–4 cycles */
-    case EG_MUL:
-        return 4.0;
-
-    /* Division: very expensive */
-    case EG_UDIV:
-    case EG_SDIV:
-    case EG_UMOD:
-    case EG_SMOD:
-        return 25.0;
-
-    /* Bit-scan / count operations */
-    case EG_TZCNT:
-    case EG_LZCNT:
-        return 2.0;
-    case EG_BSF:
-    case EG_BSR:
-        return 3.0;
-    case EG_POPCNT:
-        return 2.0;
-    case EG_BSWAP:
-        return 1.0;
-
-    /* Memory */
-    case EG_LOAD:
-        return 5.0;   /* L1-hit latency */
-    case EG_STORE:
-        return 4.0;
-
-    default:
-        return 10.0;
-    }
+    return cpu_op_cost(m ? m : cpu_model_generic(), op);
 }
 
 /* ── Cost computation (bottom-up DP) ────────────────────────────────────── */
 
 /* visited[] prevents re-entrant loops in the e-graph. */
-static double compute_cost_rec(EGraph *g, uint32_t id, bool *visited)
+static double compute_cost_rec(EGraph *g, uint32_t id,
+                                const EgCpuModel *m, bool *visited)
 {
     id = eg_find(g, id);
     if (g->classes[id].cost >= 0.0)
@@ -523,9 +469,9 @@ static double compute_cost_rec(EGraph *g, uint32_t id, bool *visited)
     for (uint32_t i = 0; i < c->nnodes; i++) {
         uint32_t ni = c->nodes[i];
         ENode  *n  = &g->nodes[ni];
-        double  nc = eg_op_cost(n->op);
+        double  nc = eg_op_cost(m, n->op);
         for (uint32_t j = 0; j < n->nargs; j++)
-            nc += compute_cost_rec(g, n->args[j], visited);
+            nc += compute_cost_rec(g, n->args[j], m, visited);
         if (nc < best) { best = nc; best_node = ni; }
     }
 
@@ -535,7 +481,7 @@ static double compute_cost_rec(EGraph *g, uint32_t id, bool *visited)
     return best;
 }
 
-void eg_compute_costs(EGraph *g)
+void eg_compute_costs(EGraph *g, const EgCpuModel *m)
 {
     /* Reset costs */
     for (uint32_t i = 0; i < g->nclasses; i++)
@@ -546,7 +492,7 @@ void eg_compute_costs(EGraph *g)
 
     for (uint32_t i = 0; i < g->nclasses; i++) {
         if (eg_find(g, i) == i) /* only roots */
-            compute_cost_rec(g, i, visited);
+            compute_cost_rec(g, i, m, visited);
     }
     free(visited);
 }

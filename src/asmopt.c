@@ -3171,22 +3171,22 @@ int asmopt_egraph_optimize(asmopt_context* ctx) {
         }
         free(syntax);
     }
-    int is_amd = ctx->amd_optimizations ? 1 : 0;
 
     /*
      * Delegate to the x86 e-graph superoptimizer.
      *
-     * x86_egraph_optimise() implements the egg equality-saturation algorithm:
+     * x86_egraph_optimize() implements the egg equality-saturation algorithm:
      *   - builds a relational e-graph per basic block
      *   - fires rewrite rules (algebraic + x86-specific + Souper-style
-     *     strength-reduction) until saturation
-     *   - extracts the minimum-cost program via bottom-up DP
+     *     strength-reduction) gated by the target CPU's feature flags
+     *   - extracts the minimum-cost program via bottom-up DP using the
+     *     target CPU's reciprocal-throughput cost model (cpu_model_lookup)
      */
     size_t out_n = 0;
     char** out_lines = x86_egraph_optimize(
         (const char**)ctx->original_lines,
         ctx->original_count,
-        is_att, is_amd,
+        is_att, ctx->target_cpu,   /* cpu_name drives both costs and rules */
         &out_n);
     if (!out_lines) {
         return -1;

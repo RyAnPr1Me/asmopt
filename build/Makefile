@@ -215,6 +215,30 @@ src/asmopt.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/asmopt_lib.dir/build.make CMakeFiles/asmopt_lib.dir/src/asmopt.c.s
 .PHONY : src/asmopt.c.s
 
+src/cpu_model.o: src/cpu_model.c.o
+.PHONY : src/cpu_model.o
+
+# target to build an object file
+src/cpu_model.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/asmopt_lib.dir/build.make CMakeFiles/asmopt_lib.dir/src/cpu_model.c.o
+.PHONY : src/cpu_model.c.o
+
+src/cpu_model.i: src/cpu_model.c.i
+.PHONY : src/cpu_model.i
+
+# target to preprocess a source file
+src/cpu_model.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/asmopt_lib.dir/build.make CMakeFiles/asmopt_lib.dir/src/cpu_model.c.i
+.PHONY : src/cpu_model.c.i
+
+src/cpu_model.s: src/cpu_model.c.s
+.PHONY : src/cpu_model.s
+
+# target to generate assembly for a file
+src/cpu_model.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/asmopt_lib.dir/build.make CMakeFiles/asmopt_lib.dir/src/cpu_model.c.s
+.PHONY : src/cpu_model.c.s
+
 src/egraph.o: src/egraph.c.o
 .PHONY : src/egraph.o
 
@@ -376,6 +400,9 @@ help:
 	@echo "... src/asmopt.o"
 	@echo "... src/asmopt.i"
 	@echo "... src/asmopt.s"
+	@echo "... src/cpu_model.o"
+	@echo "... src/cpu_model.i"
+	@echo "... src/cpu_model.s"
 	@echo "... src/egraph.o"
 	@echo "... src/egraph.i"
 	@echo "... src/egraph.s"

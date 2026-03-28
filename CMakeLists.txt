@@ -10,6 +10,7 @@ enable_testing()
 add_library(asmopt_lib
     src/asmopt.c
     src/egraph.c
+    src/cpu_model.c
     src/x86_egraph.c
 )
 target_include_directories(asmopt_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

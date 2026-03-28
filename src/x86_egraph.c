@@ -22,6 +22,7 @@
 
 #include "x86_egraph.h"
 #include "egraph.h"
+#include "cpu_model.h"
 
 #include <ctype.h>
 #include <stdint.h>
@@ -585,8 +586,9 @@ static bool lift_insn(EGraph *g, RegMap *rm,
 /*
  * apply_rewrites: one pass over all e-nodes, asserting new equalities.
  * Returns number of new merges enqueued.
+ * m: target CPU model (used for feature-gated rules like BSF→TZCNT).
  */
-static int apply_rewrites(EGraph *g, int is_amd)
+static int apply_rewrites(EGraph *g, const EgCpuModel *m)
 {
     int merges = 0;
 
@@ -810,17 +812,32 @@ static int apply_rewrites(EGraph *g, int is_amd)
             if (a0c) MERGE(ec,eg_add_const(g,cv0-1));
             break;
 
-        /* ── BSF / TZCNT equivalence (AMD: prefer TZCNT) ── */
+        /* ── BSF / TZCNT equivalence ── */
         case EG_BSF:
-            if (is_amd) {
+            /*
+             * BSF and TZCNT are semantically equivalent for non-zero inputs.
+             * On CPUs with the TZCNT feature (AMD Zen, Intel Haswell+), TZCNT
+             * has lower latency/better throughput than BSF, so we prefer it.
+             * The cost model drives which form is extracted.
+             */
+            if (cpu_has(m, CPU_FEAT_TZCNT)) {
                 uint32_t tzcnt_ec=eg_add_op(g,EG_TZCNT,&a0,1);
                 MERGE(ec,tzcnt_ec);
             }
             break;
 
-        /* ── BSR / LZCNT relationship ── */
+        /* ── BSR / LZCNT equivalence ── */
         case EG_BSR:
-            /* bsr(x) = 63 - lzcnt(x)  — not asserting equality, just model */
+            /*
+             * LZCNT gives 63-BSR; they are different semantically but on CPUs
+             * with CPU_FEAT_LZCNT the hardware supports the LZCNT encoding and
+             * it typically has lower latency.  We only merge them when the CPU
+             * has LZCNT, and the cost model then selects the cheaper form.
+             */
+            if (cpu_has(m, CPU_FEAT_LZCNT)) {
+                uint32_t lzcnt_ec=eg_add_op(g,EG_LZCNT,&a0,1);
+                MERGE(ec,lzcnt_ec);
+            }
             break;
 
         default:
@@ -834,11 +851,11 @@ static int apply_rewrites(EGraph *g, int is_amd)
 
 /* ── Equality saturation ─────────────────────────────────────────────────── */
 
-static void eg_saturate(EGraph *g, int is_amd, int max_iters)
+static void eg_saturate(EGraph *g, const EgCpuModel *m, int max_iters)
 {
     for (int iter = 0; iter < max_iters; iter++) {
         eg_rebuild(g);
-        int new_merges = apply_rewrites(g, is_amd);
+        int new_merges = apply_rewrites(g, m);
         if (new_merges == 0) break;
     }
     eg_rebuild(g);
@@ -1216,15 +1233,16 @@ typedef struct { char *reg; uint32_t eclass; } ModEntry;
 
 static void flush_segment(EGraph *g, RegMap *rm,
                            ModEntry *modified, int nmod,
-                           LineList *out, int is_att, int is_amd)
+                           LineList *out, int is_att,
+                           const EgCpuModel *m)
 {
     if (nmod == 0) { eg_destroy(g); return; }
 
-    /* Run equality saturation */
-    eg_saturate(g, is_amd, 20);
+    /* Run equality saturation with CPU-aware rewrite rules */
+    eg_saturate(g, m, 20);
 
-    /* Compute extraction costs */
-    eg_compute_costs(g);
+    /* Compute extraction costs using the target CPU's latency model */
+    eg_compute_costs(g, m);
 
     /* Set up code generator */
     CodeGen cg;
@@ -1292,9 +1310,12 @@ static void flush_segment(EGraph *g, RegMap *rm,
 /* ── Public entry point ─────────────────────────────────────────────────── */
 
 char **x86_egraph_optimize(const char **lines, size_t nlines,
-                            int is_att, int is_amd,
+                            int is_att, const char *cpu_name,
                             size_t *out_nlines)
 {
+    /* Look up the microarchitecture model — drives costs and rewrite rules */
+    const EgCpuModel *m = cpu_model_lookup(cpu_name);
+
     LineList out;
     memset(&out, 0, sizeof(out));
 
@@ -1348,7 +1369,7 @@ char **x86_egraph_optimize(const char **lines, size_t nlines,
         bool is_blank     = trimmed[0]=='\0';
 
         if (is_blank || is_label || is_directive || is_comment_only) {
-            flush_segment(g, &rm, mods, nmods, &out, is_att, is_amd);
+            flush_segment(g, &rm, mods, nmods, &out, is_att, m);
             g=eg_create(); rm_free(&rm); memset(&rm,0,sizeof(rm)); nmods=0;
             /* Pass through preserving original formatting */
             char buf[512];
@@ -1372,7 +1393,7 @@ char **x86_egraph_optimize(const char **lines, size_t nlines,
         char mnem[64]; size_t mlen=(size_t)(p-work);
         if (mlen>=sizeof(mnem)) {
             /* Too long — flush and pass through */
-            flush_segment(g,&rm,mods,nmods,&out,is_att,is_amd);
+            flush_segment(g,&rm,mods,nmods,&out,is_att,m);
             g=eg_create(); rm_free(&rm); memset(&rm,0,sizeof(rm)); nmods=0;
             char buf[512];
             snprintf(buf,sizeof(buf),"%s%s",trimmed,comment);
@@ -1418,7 +1439,7 @@ char **x86_egraph_optimize(const char **lines, size_t nlines,
 
         if (!lifted) {
             /* Barrier: flush, emit original line verbatim, reset */
-            flush_segment(g, &rm, mods, nmods, &out, is_att, is_amd);
+            flush_segment(g, &rm, mods, nmods, &out, is_att, m);
             g=eg_create(); rm_free(&rm); memset(&rm,0,sizeof(rm)); nmods=0;
             char buf[512];
             if (comment[0])
@@ -1456,7 +1477,7 @@ char **x86_egraph_optimize(const char **lines, size_t nlines,
     }
 
     /* Flush final segment */
-    flush_segment(g, &rm, mods, nmods, &out, is_att, is_amd);
+    flush_segment(g, &rm, mods, nmods, &out, is_att, m);
     rm_free(&rm);
     for(int m=0;m<nmods;m++) free(mods[m].reg);
     free(mods);
