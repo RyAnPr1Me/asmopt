@@ -37,12 +37,14 @@ char* asmopt_dump_cfg_dot(asmopt_context* ctx);
  *
  * This pass operates per straight-line basic block:
  *   1. Lifts instructions into an SSA-form e-graph.
- *   2. Applies 60+ algebraic and x86-specific rewrite rules until saturation.
- *   3. Extracts the cost-minimal instruction sequence for each modified register.
- *   4. Emits the resulting optimised assembly.
+ *   2. Applies 50+ algebraic and x86-specific rewrite rules until saturation
+ *      (the egg equality-saturation algorithm).
+ *   3. Extracts the cost-minimal instruction sequence for each modified
+ *      register (Souper-style cost-guided synthesis).
+ *   4. Emits the resulting optimized assembly.
  *
- * Called automatically by asmopt_optimize() when optimization_level >= 2 and
- * the "egraph" optimisation is not disabled.  May also be called directly.
+ * Called automatically by asmopt_optimize() when optimization_level >= 3 and
+ * the "egraph" optimization is not disabled.  May also be called directly.
  *
  * Returns 0 on success, -1 on error.
  */

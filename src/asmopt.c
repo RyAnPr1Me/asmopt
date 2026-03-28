@@ -3183,7 +3183,7 @@ int asmopt_egraph_optimize(asmopt_context* ctx) {
      *   - extracts the minimum-cost program via bottom-up DP
      */
     size_t out_n = 0;
-    char** out_lines = x86_egraph_optimise(
+    char** out_lines = x86_egraph_optimize(
         (const char**)ctx->original_lines,
         ctx->original_count,
         is_att, is_amd,

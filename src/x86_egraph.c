@@ -5,7 +5,7 @@
  *
  *   1. Lift  : parse each instruction; track register versions (SSA-style);
  *              add e-nodes to the e-graph.
- *   2. Rewrite: apply 60+ algebraic and x86-specific rewrite rules until
+ *   2. Rewrite: apply 50+ algebraic and x86-specific rewrite rules until
  *               a fixed point (equality saturation).
  *   3. Extract: cost-based bottom-up DP to pick the optimal e-node per class.
  *   4. Codegen: emit a minimal instruction sequence that realises the
@@ -545,7 +545,11 @@ static bool lift_insn(EGraph *g, RegMap *rm,
                     uint32_t immec=eg_add_const(g,imm);
                     if (base==EG_NULL) return false;
                     uint32_t args[2]={base,immec};
-                    rm_set(rm,dst,eg_add_op(g,imm<0?EG_SUB:EG_ADD,args,2));
+                    /* Always model as ADD with the signed immediate.
+                     * lea rbx, [rcx-5] → add(rcx, const(-5)) is correct;
+                     * using EG_SUB with the already-negative imm would
+                     * compute base - (-5) = base + 5, which is wrong. */
+                    rm_set(rm,dst,eg_add_op(g,EG_ADD,args,2));
                     return true;
                 }
                 /* Check if rhs is also a register */
@@ -1287,7 +1291,7 @@ static void flush_segment(EGraph *g, RegMap *rm,
 
 /* ── Public entry point ─────────────────────────────────────────────────── */
 
-char **x86_egraph_optimise(const char **lines, size_t nlines,
+char **x86_egraph_optimize(const char **lines, size_t nlines,
                             int is_att, int is_amd,
                             size_t *out_nlines)
 {

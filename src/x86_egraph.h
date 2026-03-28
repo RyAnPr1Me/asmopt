@@ -19,7 +19,7 @@
 #include <stddef.h>
 
 /* Optimise a null-terminated array of assembly lines (Intel syntax) and
- * return a newly-allocated null-terminated array of optimised lines.
+ * return a newly-allocated null-terminated array of optimized lines.
  *
  * Parameters:
  *   lines        — input instruction strings (may include labels, directives,
@@ -33,8 +33,8 @@
  *
  * Returns NULL on allocation failure.
  */
-char **x86_egraph_optimise(const char **lines, size_t nlines,
-                            int is_att, int is_amd,
-                            size_t *out_nlines);
+char **x86_egraph_optimize(const char **lines, size_t nlines,
+                             int is_att, int is_amd,
+                             size_t *out_nlines);
 
 #endif /* X86_EGRAPH_H */
