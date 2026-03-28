@@ -232,12 +232,57 @@ static const EgCpuModel MODEL_ZEN4 = {
     }}
 };
 
+/* ── AMD Zen 5 (Ryzen 9000, EPYC Turin) ─────────────────────────────────── */
+/* Improved front-end width and branch predictor vs Zen 4.                 */
+/* Source: AMD PPR for Zen 5 / Agner Fog (estimated from Zen 4 + delta).  */
+static const EgCpuModel MODEL_ZEN5 = {
+    .name    = "zen5",
+    .family  = "amd-zen",
+    .features = CPU_FEAT_TZCNT | CPU_FEAT_LZCNT | CPU_FEAT_POPCNT
+              | CPU_FEAT_BMI1 | CPU_FEAT_BMI2 | CPU_FEAT_FAST_IMUL
+              | CPU_FEAT_FAST_BSWAP | CPU_FEAT_AMD | CPU_FEAT_NO_PARTIAL,
+    .costs = { .ops = {
+        [EG_CONST]  = 0.0f,
+        [EG_VAR]    = 0.0f,
+        [EG_ADD]    = 0.2f,   /* 5-wide ALU on Zen 5 */
+        [EG_SUB]    = 0.2f,
+        [EG_MUL]    = 4.0f,
+        [EG_IMUL]   = 3.0f,  /* lat 3, tp 1 */
+        [EG_UDIV]   = 18.0f, /* improved over Zen 4 */
+        [EG_SDIV]   = 18.0f,
+        [EG_UMOD]   = 18.0f,
+        [EG_SMOD]   = 18.0f,
+        [EG_AND]    = 0.2f,
+        [EG_OR]     = 0.2f,
+        [EG_XOR]    = 0.2f,
+        [EG_NOT]    = 0.2f,
+        [EG_NEG]    = 0.2f,
+        [EG_SHL]    = 0.33f, /* improved shift throughput */
+        [EG_SHR]    = 0.33f,
+        [EG_SAR]    = 0.33f,
+        [EG_ROL]    = 0.33f,
+        [EG_ROR]    = 0.33f,
+        [EG_INC]    = 0.2f,
+        [EG_DEC]    = 0.2f,
+        [EG_BSF]    = 3.0f,
+        [EG_BSR]    = 3.0f,
+        [EG_TZCNT]  = 1.0f,
+        [EG_LZCNT]  = 1.0f,
+        [EG_POPCNT] = 1.0f,
+        [EG_BSWAP]  = 1.0f,
+        [EG_LEA]    = 0.5f,
+        [EG_LOAD]   = 4.0f,
+        [EG_STORE]  = 1.0f,
+    }}
+};
+
 /* ── Intel Sandy Bridge / Ivy Bridge ────────────────────────────────────── */
 /* Source: Agner Fog (sandybridge column).                                  */
 static const EgCpuModel MODEL_SANDYBRIDGE = {
     .name    = "sandybridge",
     .family  = "intel-core",
-    .features = CPU_FEAT_POPCNT | CPU_FEAT_FAST_IMUL | CPU_FEAT_INTEL,
+    .features = CPU_FEAT_POPCNT | CPU_FEAT_FAST_IMUL | CPU_FEAT_INTEL
+              | CPU_FEAT_SLOW_LEA,
     .costs = { .ops = {
         [EG_CONST]  = 0.0f,
         [EG_VAR]    = 0.0f,
@@ -488,6 +533,94 @@ static const EgCpuModel MODEL_SAPPHIRERAPIDS = {
     }}
 };
 
+/* ── Intel Arrow Lake / Lunar Lake (P-core: Lion Cove) ──────────────────── */
+/* 2024 hybrid; Lion Cove P-core has 6-wide ALU and improved OOO window.  */
+/* Source: Intel Architecture Day 2024, llvm-mca measurements.            */
+static const EgCpuModel MODEL_ARROWLAKE = {
+    .name    = "arrowlake",
+    .family  = "intel-arrow",
+    .features = CPU_FEAT_TZCNT | CPU_FEAT_LZCNT | CPU_FEAT_POPCNT
+              | CPU_FEAT_BMI1 | CPU_FEAT_BMI2 | CPU_FEAT_FAST_IMUL
+              | CPU_FEAT_FAST_BSWAP | CPU_FEAT_INTEL | CPU_FEAT_NO_PARTIAL,
+    .costs = { .ops = {
+        [EG_CONST]  = 0.0f,
+        [EG_VAR]    = 0.0f,
+        [EG_ADD]    = 0.17f,  /* ~6/cycle throughput (Lion Cove) */
+        [EG_SUB]    = 0.17f,
+        [EG_MUL]    = 4.0f,
+        [EG_IMUL]   = 3.0f,
+        [EG_UDIV]   = 18.0f,
+        [EG_SDIV]   = 18.0f,
+        [EG_UMOD]   = 18.0f,
+        [EG_SMOD]   = 18.0f,
+        [EG_AND]    = 0.17f,
+        [EG_OR]     = 0.17f,
+        [EG_XOR]    = 0.17f,
+        [EG_NOT]    = 0.17f,
+        [EG_NEG]    = 0.17f,
+        [EG_SHL]    = 0.5f,
+        [EG_SHR]    = 0.5f,
+        [EG_SAR]    = 0.5f,
+        [EG_ROL]    = 0.5f,
+        [EG_ROR]    = 0.5f,
+        [EG_INC]    = 0.17f,
+        [EG_DEC]    = 0.17f,
+        [EG_BSF]    = 3.0f,
+        [EG_BSR]    = 3.0f,
+        [EG_TZCNT]  = 1.0f,
+        [EG_LZCNT]  = 1.0f,
+        [EG_POPCNT] = 1.0f,
+        [EG_BSWAP]  = 1.0f,
+        [EG_LEA]    = 0.5f,
+        [EG_LOAD]   = 4.0f,
+        [EG_STORE]  = 1.0f,
+    }}
+};
+
+/* ── Intel Gracemont (E-core: Alder Lake, Raptor Lake, Meteor Lake) ──────── */
+/* In-order Gracemont execution cluster; slower shifts, 3-comp LEA costly. */
+/* Source: Intel Gracemont Optimization Guide + Agner Fog.                 */
+static const EgCpuModel MODEL_GRACEMONT = {
+    .name    = "gracemont",
+    .family  = "intel-atom",
+    .features = CPU_FEAT_TZCNT | CPU_FEAT_LZCNT | CPU_FEAT_POPCNT
+              | CPU_FEAT_BMI1 | CPU_FEAT_BMI2 | CPU_FEAT_FAST_IMUL
+              | CPU_FEAT_INTEL | CPU_FEAT_SLOW_LEA | CPU_FEAT_INC_FLAGS,
+    .costs = { .ops = {
+        [EG_CONST]  = 0.0f,
+        [EG_VAR]    = 0.0f,
+        [EG_ADD]    = 0.25f,  /* 4-wide ALU */
+        [EG_SUB]    = 0.25f,
+        [EG_MUL]    = 4.0f,
+        [EG_IMUL]   = 4.0f,  /* slightly slower than P-core */
+        [EG_UDIV]   = 30.0f,
+        [EG_SDIV]   = 30.0f,
+        [EG_UMOD]   = 30.0f,
+        [EG_SMOD]   = 30.0f,
+        [EG_AND]    = 0.25f,
+        [EG_OR]     = 0.25f,
+        [EG_XOR]    = 0.25f,
+        [EG_NOT]    = 0.25f,
+        [EG_NEG]    = 0.25f,
+        [EG_SHL]    = 1.0f,  /* shift port is shared/limited */
+        [EG_SHR]    = 1.0f,
+        [EG_SAR]    = 1.0f,
+        [EG_ROL]    = 1.0f,
+        [EG_ROR]    = 1.0f,
+        [EG_INC]    = 0.25f,
+        [EG_DEC]    = 0.25f,
+        [EG_BSF]    = 3.0f,
+        [EG_BSR]    = 3.0f,
+        [EG_TZCNT]  = 3.0f,
+        [EG_LZCNT]  = 3.0f,
+        [EG_POPCNT] = 3.0f,
+        [EG_BSWAP]  = 1.0f,
+        [EG_LEA]    = 1.0f,  /* 3-component LEA is expensive */
+        [EG_LOAD]   = 5.0f,
+        [EG_STORE]  = 1.0f,
+    }}
+};
+
 /* ── Generic (conservative baseline) ────────────────────────────────────── */
 static EgCpuModel MODEL_GENERIC;  /* filled by cpu_model_generic() */
 static bool       MODEL_GENERIC_INIT = false;
@@ -519,6 +652,9 @@ static const AliasEntry ALIASES[] = {
     { "znver3",         &MODEL_ZEN3  },
     { "zen4",           &MODEL_ZEN4  },
     { "znver4",         &MODEL_ZEN4  },
+    { "zen4c",          &MODEL_ZEN4  },   /* dense-core Zen 4 variant       */
+    { "zen5",           &MODEL_ZEN5  },
+    { "znver5",         &MODEL_ZEN5  },
     /* AMD older (map to Zen as safe approximation) */
     { "k8",             &MODEL_ZEN   },
     { "k8sse3",         &MODEL_ZEN   },
@@ -543,14 +679,20 @@ static const AliasEntry ALIASES[] = {
     { "icelake-server", &MODEL_ICELAKE },
     { "tigerlake",      &MODEL_ICELAKE },
     { "rocketlake",     &MODEL_ICELAKE },
-    /* Intel Alder Lake / Raptor Lake */
+    /* Intel Alder Lake / Raptor Lake (P-core model) */
     { "alderlake",      &MODEL_ALDERLAKE },
     { "raptorlake",     &MODEL_ALDERLAKE },
     { "meteorlake",     &MODEL_ALDERLAKE },
+    /* Intel Gracemont (E-core in Alder Lake / Raptor Lake / Meteor Lake) */
+    { "gracemont",      &MODEL_GRACEMONT },
     /* Intel Sapphire Rapids / Emerald Rapids */
     { "sapphirerapids", &MODEL_SAPPHIRERAPIDS },
     { "emeraldrapids",  &MODEL_SAPPHIRERAPIDS },
     { "graniterapids",  &MODEL_SAPPHIRERAPIDS },
+    /* Intel Arrow Lake / Lunar Lake / Panther Lake (Lion Cove P-core) */
+    { "arrowlake",      &MODEL_ARROWLAKE },
+    { "lunarlake",      &MODEL_ARROWLAKE },
+    { "pantherlake",    &MODEL_ARROWLAKE },
     /* Generic */
     { "generic",        NULL },   /* NULL → use MODEL_GENERIC */
     { "native",         NULL },
