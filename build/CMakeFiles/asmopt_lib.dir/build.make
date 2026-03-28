@@ -86,17 +86,65 @@ CMakeFiles/asmopt_lib.dir/src/asmopt.c.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/asmopt_lib.dir/src/asmopt.c.s"
 	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/runner/work/asmopt/asmopt/src/asmopt.c -o CMakeFiles/asmopt_lib.dir/src/asmopt.c.s
 
+CMakeFiles/asmopt_lib.dir/src/egraph.c.o: CMakeFiles/asmopt_lib.dir/flags.make
+CMakeFiles/asmopt_lib.dir/src/egraph.c.o: /home/runner/work/asmopt/asmopt/src/egraph.c
+CMakeFiles/asmopt_lib.dir/src/egraph.c.o: CMakeFiles/asmopt_lib.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/asmopt/asmopt/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building C object CMakeFiles/asmopt_lib.dir/src/egraph.c.o"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/asmopt_lib.dir/src/egraph.c.o -MF CMakeFiles/asmopt_lib.dir/src/egraph.c.o.d -o CMakeFiles/asmopt_lib.dir/src/egraph.c.o -c /home/runner/work/asmopt/asmopt/src/egraph.c
+
+CMakeFiles/asmopt_lib.dir/src/egraph.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/asmopt_lib.dir/src/egraph.c.i"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/runner/work/asmopt/asmopt/src/egraph.c > CMakeFiles/asmopt_lib.dir/src/egraph.c.i
+
+CMakeFiles/asmopt_lib.dir/src/egraph.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/asmopt_lib.dir/src/egraph.c.s"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/runner/work/asmopt/asmopt/src/egraph.c -o CMakeFiles/asmopt_lib.dir/src/egraph.c.s
+
+CMakeFiles/asmopt_lib.dir/src/cpu_model.c.o: CMakeFiles/asmopt_lib.dir/flags.make
+CMakeFiles/asmopt_lib.dir/src/cpu_model.c.o: /home/runner/work/asmopt/asmopt/src/cpu_model.c
+CMakeFiles/asmopt_lib.dir/src/cpu_model.c.o: CMakeFiles/asmopt_lib.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/asmopt/asmopt/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building C object CMakeFiles/asmopt_lib.dir/src/cpu_model.c.o"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/asmopt_lib.dir/src/cpu_model.c.o -MF CMakeFiles/asmopt_lib.dir/src/cpu_model.c.o.d -o CMakeFiles/asmopt_lib.dir/src/cpu_model.c.o -c /home/runner/work/asmopt/asmopt/src/cpu_model.c
+
+CMakeFiles/asmopt_lib.dir/src/cpu_model.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/asmopt_lib.dir/src/cpu_model.c.i"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/runner/work/asmopt/asmopt/src/cpu_model.c > CMakeFiles/asmopt_lib.dir/src/cpu_model.c.i
+
+CMakeFiles/asmopt_lib.dir/src/cpu_model.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/asmopt_lib.dir/src/cpu_model.c.s"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/runner/work/asmopt/asmopt/src/cpu_model.c -o CMakeFiles/asmopt_lib.dir/src/cpu_model.c.s
+
+CMakeFiles/asmopt_lib.dir/src/x86_egraph.c.o: CMakeFiles/asmopt_lib.dir/flags.make
+CMakeFiles/asmopt_lib.dir/src/x86_egraph.c.o: /home/runner/work/asmopt/asmopt/src/x86_egraph.c
+CMakeFiles/asmopt_lib.dir/src/x86_egraph.c.o: CMakeFiles/asmopt_lib.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/asmopt/asmopt/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building C object CMakeFiles/asmopt_lib.dir/src/x86_egraph.c.o"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/asmopt_lib.dir/src/x86_egraph.c.o -MF CMakeFiles/asmopt_lib.dir/src/x86_egraph.c.o.d -o CMakeFiles/asmopt_lib.dir/src/x86_egraph.c.o -c /home/runner/work/asmopt/asmopt/src/x86_egraph.c
+
+CMakeFiles/asmopt_lib.dir/src/x86_egraph.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/asmopt_lib.dir/src/x86_egraph.c.i"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/runner/work/asmopt/asmopt/src/x86_egraph.c > CMakeFiles/asmopt_lib.dir/src/x86_egraph.c.i
+
+CMakeFiles/asmopt_lib.dir/src/x86_egraph.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/asmopt_lib.dir/src/x86_egraph.c.s"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/runner/work/asmopt/asmopt/src/x86_egraph.c -o CMakeFiles/asmopt_lib.dir/src/x86_egraph.c.s
+
 # Object files for target asmopt_lib
 asmopt_lib_OBJECTS = \
-"CMakeFiles/asmopt_lib.dir/src/asmopt.c.o"
+"CMakeFiles/asmopt_lib.dir/src/asmopt.c.o" \
+"CMakeFiles/asmopt_lib.dir/src/egraph.c.o" \
+"CMakeFiles/asmopt_lib.dir/src/cpu_model.c.o" \
+"CMakeFiles/asmopt_lib.dir/src/x86_egraph.c.o"
 
 # External object files for target asmopt_lib
 asmopt_lib_EXTERNAL_OBJECTS =
 
 libasmopt_lib.a: CMakeFiles/asmopt_lib.dir/src/asmopt.c.o
+libasmopt_lib.a: CMakeFiles/asmopt_lib.dir/src/egraph.c.o
+libasmopt_lib.a: CMakeFiles/asmopt_lib.dir/src/cpu_model.c.o
+libasmopt_lib.a: CMakeFiles/asmopt_lib.dir/src/x86_egraph.c.o
 libasmopt_lib.a: CMakeFiles/asmopt_lib.dir/build.make
 libasmopt_lib.a: CMakeFiles/asmopt_lib.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/runner/work/asmopt/asmopt/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking C static library libasmopt_lib.a"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/runner/work/asmopt/asmopt/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Linking C static library libasmopt_lib.a"
 	$(CMAKE_COMMAND) -P CMakeFiles/asmopt_lib.dir/cmake_clean_target.cmake
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/asmopt_lib.dir/link.txt --verbose=$(VERBOSE)
 

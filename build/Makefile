@@ -215,6 +215,54 @@ src/asmopt.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/asmopt_lib.dir/build.make CMakeFiles/asmopt_lib.dir/src/asmopt.c.s
 .PHONY : src/asmopt.c.s
 
+src/cpu_model.o: src/cpu_model.c.o
+.PHONY : src/cpu_model.o
+
+# target to build an object file
+src/cpu_model.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/asmopt_lib.dir/build.make CMakeFiles/asmopt_lib.dir/src/cpu_model.c.o
+.PHONY : src/cpu_model.c.o
+
+src/cpu_model.i: src/cpu_model.c.i
+.PHONY : src/cpu_model.i
+
+# target to preprocess a source file
+src/cpu_model.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/asmopt_lib.dir/build.make CMakeFiles/asmopt_lib.dir/src/cpu_model.c.i
+.PHONY : src/cpu_model.c.i
+
+src/cpu_model.s: src/cpu_model.c.s
+.PHONY : src/cpu_model.s
+
+# target to generate assembly for a file
+src/cpu_model.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/asmopt_lib.dir/build.make CMakeFiles/asmopt_lib.dir/src/cpu_model.c.s
+.PHONY : src/cpu_model.c.s
+
+src/egraph.o: src/egraph.c.o
+.PHONY : src/egraph.o
+
+# target to build an object file
+src/egraph.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/asmopt_lib.dir/build.make CMakeFiles/asmopt_lib.dir/src/egraph.c.o
+.PHONY : src/egraph.c.o
+
+src/egraph.i: src/egraph.c.i
+.PHONY : src/egraph.i
+
+# target to preprocess a source file
+src/egraph.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/asmopt_lib.dir/build.make CMakeFiles/asmopt_lib.dir/src/egraph.c.i
+.PHONY : src/egraph.c.i
+
+src/egraph.s: src/egraph.c.s
+.PHONY : src/egraph.s
+
+# target to generate assembly for a file
+src/egraph.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/asmopt_lib.dir/build.make CMakeFiles/asmopt_lib.dir/src/egraph.c.s
+.PHONY : src/egraph.c.s
+
 src/main.o: src/main.c.o
 .PHONY : src/main.o
 
@@ -238,6 +286,30 @@ src/main.s: src/main.c.s
 src/main.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/asmopt.dir/build.make CMakeFiles/asmopt.dir/src/main.c.s
 .PHONY : src/main.c.s
+
+src/x86_egraph.o: src/x86_egraph.c.o
+.PHONY : src/x86_egraph.o
+
+# target to build an object file
+src/x86_egraph.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/asmopt_lib.dir/build.make CMakeFiles/asmopt_lib.dir/src/x86_egraph.c.o
+.PHONY : src/x86_egraph.c.o
+
+src/x86_egraph.i: src/x86_egraph.c.i
+.PHONY : src/x86_egraph.i
+
+# target to preprocess a source file
+src/x86_egraph.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/asmopt_lib.dir/build.make CMakeFiles/asmopt_lib.dir/src/x86_egraph.c.i
+.PHONY : src/x86_egraph.c.i
+
+src/x86_egraph.s: src/x86_egraph.c.s
+.PHONY : src/x86_egraph.s
+
+# target to generate assembly for a file
+src/x86_egraph.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/asmopt_lib.dir/build.make CMakeFiles/asmopt_lib.dir/src/x86_egraph.c.s
+.PHONY : src/x86_egraph.c.s
 
 tests/test_comprehensive.o: tests/test_comprehensive.c.o
 .PHONY : tests/test_comprehensive.o
@@ -328,9 +400,18 @@ help:
 	@echo "... src/asmopt.o"
 	@echo "... src/asmopt.i"
 	@echo "... src/asmopt.s"
+	@echo "... src/cpu_model.o"
+	@echo "... src/cpu_model.i"
+	@echo "... src/cpu_model.s"
+	@echo "... src/egraph.o"
+	@echo "... src/egraph.i"
+	@echo "... src/egraph.s"
 	@echo "... src/main.o"
 	@echo "... src/main.i"
 	@echo "... src/main.s"
+	@echo "... src/x86_egraph.o"
+	@echo "... src/x86_egraph.i"
+	@echo "... src/x86_egraph.s"
 	@echo "... tests/test_comprehensive.o"
 	@echo "... tests/test_comprehensive.i"
 	@echo "... tests/test_comprehensive.s"

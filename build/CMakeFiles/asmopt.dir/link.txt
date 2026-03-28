@@ -1,1 +1,1 @@
-/usr/bin/cc -Wl,--dependency-file=CMakeFiles/asmopt.dir/link.d CMakeFiles/asmopt.dir/src/main.c.o -o asmopt  libasmopt_lib.a
+/usr/bin/cc -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/asmopt.dir/link.d CMakeFiles/asmopt.dir/src/main.c.o -o asmopt  libasmopt_lib.a
