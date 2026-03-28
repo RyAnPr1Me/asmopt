@@ -9,6 +9,8 @@ set(CMAKE_DEPENDS_LANGUAGES
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/runner/work/asmopt/asmopt/src/asmopt.c" "CMakeFiles/asmopt_lib.dir/src/asmopt.c.o" "gcc" "CMakeFiles/asmopt_lib.dir/src/asmopt.c.o.d"
+  "/home/runner/work/asmopt/asmopt/src/egraph.c" "CMakeFiles/asmopt_lib.dir/src/egraph.c.o" "gcc" "CMakeFiles/asmopt_lib.dir/src/egraph.c.o.d"
+  "/home/runner/work/asmopt/asmopt/src/x86_egraph.c" "CMakeFiles/asmopt_lib.dir/src/x86_egraph.c.o" "gcc" "CMakeFiles/asmopt_lib.dir/src/x86_egraph.c.o.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

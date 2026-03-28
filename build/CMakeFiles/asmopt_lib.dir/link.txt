@@ -1,2 +1,2 @@
-/usr/bin/ar qc libasmopt_lib.a CMakeFiles/asmopt_lib.dir/src/asmopt.c.o
+/usr/bin/ar qc libasmopt_lib.a CMakeFiles/asmopt_lib.dir/src/asmopt.c.o CMakeFiles/asmopt_lib.dir/src/egraph.c.o CMakeFiles/asmopt_lib.dir/src/x86_egraph.c.o
 /usr/bin/ranlib libasmopt_lib.a

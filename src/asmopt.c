@@ -33,6 +33,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "asmopt.h"
+#include "x86_egraph.h"
 
 #define IMMEDIATE_BUFFER_SIZE 64
 #define ZERO_GUARD_PATTERN_LINES 3
@@ -42,6 +43,7 @@ typedef struct {
     size_t optimized_lines;
     size_t replacements;
     size_t removals;
+    size_t egraph_lines; /* lines after e-graph pass */
 } asmopt_stats;
 
 typedef struct {
@@ -3094,10 +3096,39 @@ int asmopt_optimize(asmopt_context* ctx) {
     ctx->stats.optimized_lines = 0;
     ctx->stats.replacements = 0;
     ctx->stats.removals = 0;
+    ctx->stats.egraph_lines = 0;
     asmopt_build_ir(ctx);
     asmopt_build_cfg(ctx);
     ctx->insert_hot_align = asmopt_option_enabled(ctx, "hot_align");
     bool do_opt = asmopt_should_optimize(ctx);
+
+    /*
+     * E-graph equality-saturation superoptimizer pass (egg/Souper style).
+     *
+     * Runs before the peephole pass when optimization_level >= 3 and the
+     * "egraph" pass is not explicitly disabled.  It:
+     *   1. Lifts each straight-line basic block into an SSA e-graph.
+     *   2. Applies 60+ algebraic and x86-specific rewrite rules (egg-style
+     *      equality saturation until a fixed point — the egg algorithm).
+     *   3. Extracts the cost-minimal instruction sequence (Souper-style
+     *      cost-guided synthesis) for every modified register.
+     * The peephole pass then performs a final clean-up sweep.
+     *
+     * Level 3+ only: level 2 is reserved for the peephole pass alone so that
+     * FLAG-setting idioms (or/and self → test) and instruction-scheduling
+     * patterns handled exclusively by the peephole remain correct.
+     */
+    bool do_egraph = do_opt
+        && ctx->optimization_level >= 3
+        && !asmopt_is_disabled(ctx, "egraph");
+    if (do_egraph) {
+        asmopt_egraph_optimize(ctx);
+        ctx->stats.egraph_lines = ctx->original_count;
+        /* Reset per-pass counters — peephole will accumulate them below */
+        ctx->stats.replacements = 0;
+        ctx->stats.removals = 0;
+    }
+
     for (size_t i = 0; i < ctx->original_count; i++) {
         if (!do_opt) {
             asmopt_store_optimized_line(ctx, ctx->original_lines[i]);
@@ -3124,6 +3155,55 @@ int asmopt_optimize(asmopt_context* ctx) {
         ctx->stats.optimized_lines = ctx->optimized_count;
     }
     free(syntax);
+    return 0;
+}
+
+int asmopt_egraph_optimize(asmopt_context* ctx) {
+    if (!ctx || !ctx->original_lines || ctx->original_count == 0) {
+        return -1;
+    }
+
+    int is_att = 0;
+    {
+        char* syntax = asmopt_detect_syntax(ctx);
+        if (syntax && strcmp(syntax, "att") == 0) {
+            is_att = 1;
+        }
+        free(syntax);
+    }
+    int is_amd = ctx->amd_optimizations ? 1 : 0;
+
+    /*
+     * Delegate to the x86 e-graph superoptimizer.
+     *
+     * x86_egraph_optimise() implements the egg equality-saturation algorithm:
+     *   - builds a relational e-graph per basic block
+     *   - fires rewrite rules (algebraic + x86-specific + Souper-style
+     *     strength-reduction) until saturation
+     *   - extracts the minimum-cost program via bottom-up DP
+     */
+    size_t out_n = 0;
+    char** out_lines = x86_egraph_optimise(
+        (const char**)ctx->original_lines,
+        ctx->original_count,
+        is_att, is_amd,
+        &out_n);
+    if (!out_lines) {
+        return -1;
+    }
+
+    /* Replace original_lines with the e-graph output so the subsequent
+       peephole pass operates on the already-improved code. */
+    asmopt_free_string_array(ctx->original_lines, ctx->original_count);
+    ctx->original_lines = out_lines;
+    ctx->original_count = out_n;
+
+    /* Rebuild IR and CFG over the new lines */
+    asmopt_reset_ir(ctx);
+    asmopt_reset_cfg(ctx);
+    asmopt_build_ir(ctx);
+    asmopt_build_cfg(ctx);
+
     return 0;
 }
 

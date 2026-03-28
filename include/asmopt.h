@@ -32,6 +32,22 @@ char* asmopt_dump_ir_text(asmopt_context* ctx);
 char* asmopt_dump_cfg_text(asmopt_context* ctx);
 char* asmopt_dump_cfg_dot(asmopt_context* ctx);
 
+/*
+ * Run the e-graph equality-saturation superoptimizer on the parsed input.
+ *
+ * This pass operates per straight-line basic block:
+ *   1. Lifts instructions into an SSA-form e-graph.
+ *   2. Applies 60+ algebraic and x86-specific rewrite rules until saturation.
+ *   3. Extracts the cost-minimal instruction sequence for each modified register.
+ *   4. Emits the resulting optimised assembly.
+ *
+ * Called automatically by asmopt_optimize() when optimization_level >= 2 and
+ * the "egraph" optimisation is not disabled.  May also be called directly.
+ *
+ * Returns 0 on success, -1 on error.
+ */
+int asmopt_egraph_optimize(asmopt_context* ctx);
+
 #ifdef __cplusplus
 }
 #endif
