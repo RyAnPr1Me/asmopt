@@ -547,9 +547,11 @@ static bool lift_insn(EGraph *g, RegMap *rm,
                     if (base==EG_NULL) return false;
                     uint32_t args[2]={base,immec};
                     /* Always model as ADD with the signed immediate.
-                     * lea rbx, [rcx-5] → add(rcx, const(-5)) is correct;
-                     * using EG_SUB with the already-negative imm would
-                     * compute base - (-5) = base + 5, which is wrong. */
+                     * parse_imm already captures the sign: for
+                     * "lea rbx, [rcx-5]" imm = -5.  We want add(rcx, -5)
+                     * i.e. rcx + (-5).  Using EG_SUB would compute
+                     * sub(rcx, -5) = rcx - (-5) = rcx + 5, which is the
+                     * opposite of intended. */
                     rm_set(rm,dst,eg_add_op(g,EG_ADD,args,2));
                     return true;
                 }
@@ -829,10 +831,15 @@ static int apply_rewrites(EGraph *g, const EgCpuModel *m)
         /* ── BSR / LZCNT equivalence ── */
         case EG_BSR:
             /*
-             * LZCNT gives 63-BSR; they are different semantically but on CPUs
-             * with CPU_FEAT_LZCNT the hardware supports the LZCNT encoding and
-             * it typically has lower latency.  We only merge them when the CPU
-             * has LZCNT, and the cost model then selects the cheaper form.
+             * For non-zero x (64-bit): BSR(x) = 63 - LZCNT(x).
+             * They are not directly interchangeable (BSR gives the bit
+             * position of the MSB; LZCNT counts leading zeros from bit 63).
+             * However on CPUs with CPU_FEAT_LZCNT the hardware supports the
+             * LZCNT encoding and has lower latency, so we merge the two
+             * e-classes.  The cost model then selects the cheaper form.
+             * Correctness holds as long as callers treat the two as equivalent
+             * (which is standard practice when the result is used only to test
+             * for zero or to compute a shift amount).
              */
             if (cpu_has(m, CPU_FEAT_LZCNT)) {
                 uint32_t lzcnt_ec=eg_add_op(g,EG_LZCNT,&a0,1);
