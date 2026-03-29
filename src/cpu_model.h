@@ -43,6 +43,10 @@ typedef uint32_t CpuFeatures;
 #define CPU_FEAT_AMD        (1u << 8)  /* AMD-family architecture            */
 #define CPU_FEAT_INTEL      (1u << 9)  /* Intel-family architecture          */
 #define CPU_FEAT_NO_PARTIAL (1u << 10) /* Avoid partial-register writes      */
+#define CPU_FEAT_SLOW_LEA   (1u << 11) /* 3-component LEA has 3-cycle lat.
+                                           (Sandybridge, Gracemont E-core)   */
+#define CPU_FEAT_INC_FLAGS  (1u << 12) /* INC/DEC cause partial-flag stalls;
+                                           prefer ADD/SUB 1 for throughput   */
 
 /* ── Per-op cost table ───────────────────────────────────────────────────── */
 

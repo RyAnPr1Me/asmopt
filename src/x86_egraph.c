@@ -642,6 +642,18 @@ static int apply_rewrites(EGraph *g, const EgCpuModel *m)
                     MERGE(ec,eg_add_op(g,EG_SUB,args2,2));
                 }
             }
+            /* add(x,neg(x)) = 0 */
+            {
+                uint32_t neg0=EG_NULL;
+                if (a1!=EG_NULL) {
+                    EClass *ca1=&g->classes[a1];
+                    for (uint32_t k=0;k<ca1->nnodes;k++)
+                        if (g->nodes[ca1->nodes[k]].op==EG_NEG)
+                            { neg0=eg_find(g,g->nodes[ca1->nodes[k]].args[0]); break; }
+                }
+                if (neg0!=EG_NULL && eg_equiv(g,a0,neg0))
+                    MERGE(ec,eg_add_const(g,0));
+            }
             break;
 
         /* ── SUB rules ── */
@@ -705,6 +717,27 @@ static int apply_rewrites(EGraph *g, const EgCpuModel *m)
             if (eg_equiv(g,a0,a1)) MERGE(ec,a0);
             /* Constant folding */
             if (a0c && a1c) MERGE(ec,eg_add_const(g,cv0&cv1));
+            /* De Morgan: and(not(x),not(y)) = not(or(x,y)) */
+            {
+                uint32_t an0=EG_NULL, an1=EG_NULL;
+                if (a0!=EG_NULL) {
+                    EClass *ca=&g->classes[a0];
+                    for (uint32_t k=0;k<ca->nnodes;k++)
+                        if (g->nodes[ca->nodes[k]].op==EG_NOT)
+                            { an0=eg_find(g,g->nodes[ca->nodes[k]].args[0]); break; }
+                }
+                if (a1!=EG_NULL) {
+                    EClass *ca=&g->classes[a1];
+                    for (uint32_t k=0;k<ca->nnodes;k++)
+                        if (g->nodes[ca->nodes[k]].op==EG_NOT)
+                            { an1=eg_find(g,g->nodes[ca->nodes[k]].args[0]); break; }
+                }
+                if (an0!=EG_NULL && an1!=EG_NULL) {
+                    uint32_t oargs[2]={an0,an1};
+                    uint32_t or_ec=eg_add_op(g,EG_OR,oargs,2);
+                    MERGE(ec,eg_add_op(g,EG_NOT,&or_ec,1));
+                }
+            }
             break;
 
         /* ── OR rules ── */
@@ -718,6 +751,27 @@ static int apply_rewrites(EGraph *g, const EgCpuModel *m)
             if (eg_equiv(g,a0,a1)) MERGE(ec,a0);
             /* Constant folding */
             if (a0c && a1c) MERGE(ec,eg_add_const(g,cv0|cv1));
+            /* De Morgan: or(not(x),not(y)) = not(and(x,y)) */
+            {
+                uint32_t on0=EG_NULL, on1=EG_NULL;
+                if (a0!=EG_NULL) {
+                    EClass *ca=&g->classes[a0];
+                    for (uint32_t k=0;k<ca->nnodes;k++)
+                        if (g->nodes[ca->nodes[k]].op==EG_NOT)
+                            { on0=eg_find(g,g->nodes[ca->nodes[k]].args[0]); break; }
+                }
+                if (a1!=EG_NULL) {
+                    EClass *ca=&g->classes[a1];
+                    for (uint32_t k=0;k<ca->nnodes;k++)
+                        if (g->nodes[ca->nodes[k]].op==EG_NOT)
+                            { on1=eg_find(g,g->nodes[ca->nodes[k]].args[0]); break; }
+                }
+                if (on0!=EG_NULL && on1!=EG_NULL) {
+                    uint32_t aargs[2]={on0,on1};
+                    uint32_t and_ec=eg_add_op(g,EG_AND,aargs,2);
+                    MERGE(ec,eg_add_op(g,EG_NOT,&and_ec,1));
+                }
+            }
             break;
 
         /* ── XOR rules ── */
@@ -814,6 +868,44 @@ static int apply_rewrites(EGraph *g, const EgCpuModel *m)
             if (a0c) MERGE(ec,eg_add_const(g,cv0-1));
             break;
 
+        /* ── ROL rules ── */
+        case EG_ROL:
+            /* rol(x,0) = x */
+            if (a1c && cv1==0) MERGE(ec,a0);
+            /* Constant folding */
+            if (a0c && a1c && cv1>=0 && cv1<64) {
+                unsigned sh = (unsigned)cv1 & 63;
+                uint64_t uv = (uint64_t)cv0;
+                uint64_t res = (sh==0) ? uv : ((uv<<sh)|(uv>>(64-sh)));
+                MERGE(ec,eg_add_const(g,(int64_t)res));
+            }
+            /* rol(x,n) = ror(x,64-n): let cost model pick the cheaper form */
+            if (a1c && cv1>0 && cv1<64) {
+                uint32_t comp=eg_add_const(g,64-cv1);
+                uint32_t rargs[2]={a0,comp};
+                MERGE(ec,eg_add_op(g,EG_ROR,rargs,2));
+            }
+            break;
+
+        /* ── ROR rules ── */
+        case EG_ROR:
+            /* ror(x,0) = x */
+            if (a1c && cv1==0) MERGE(ec,a0);
+            /* Constant folding */
+            if (a0c && a1c && cv1>=0 && cv1<64) {
+                unsigned sh = (unsigned)cv1 & 63;
+                uint64_t uv = (uint64_t)cv0;
+                uint64_t res = (sh==0) ? uv : ((uv>>sh)|(uv<<(64-sh)));
+                MERGE(ec,eg_add_const(g,(int64_t)res));
+            }
+            /* ror(x,n) = rol(x,64-n) */
+            if (a1c && cv1>0 && cv1<64) {
+                uint32_t comp=eg_add_const(g,64-cv1);
+                uint32_t rargs[2]={a0,comp};
+                MERGE(ec,eg_add_op(g,EG_ROL,rargs,2));
+            }
+            break;
+
         /* ── BSF / TZCNT equivalence ── */
         case EG_BSF:
             /*
@@ -886,9 +978,14 @@ static void eg_saturate(EGraph *g, const EgCpuModel *m, int max_iters)
  * reuse already-computed values.
  */
 
-#define MAX_SCRATCH 4
-static const char *SCRATCH_REGS[MAX_SCRATCH] = {
-    "__scratch0__","__scratch1__","__scratch2__","__scratch3__"
+/*
+ * Caller-saved (call-clobbered) x86-64 registers available as scratch.
+ * We prefer these because they do not need to be preserved across calls.
+ * The allocator picks those not already occupied by the segment's reg map.
+ */
+#define MAX_SCRATCH 6
+static const char *CANDIDATE_SCRATCH[MAX_SCRATCH] = {
+    "r11","r10","r9","r8","rcx","rdx"
 };
 
 typedef struct {
@@ -973,14 +1070,40 @@ static void cg_emit_into(CodeGen *cg, uint32_t ec, const char *dst_reg)
     case EG_ADD: {
         const char *lhs = cg_materialise(cg, best->args[0]);
         const char *rhs = cg_materialise(cg, best->args[1]);
-        /* mov dst, lhs; add dst, rhs */
+        int64_t rv; bool rc=eg_is_const(g,best->args[1],&rv);
+
+        /*
+         * LEA synthesis: when dst_reg differs from lhs we can use a single
+         * `lea dst, [lhs+rhs]` or `lea dst, [lhs+imm]` instead of the
+         * two-instruction `mov dst, lhs; add dst, rhs` sequence.
+         *
+         * Conditions:
+         *   - lhs is a known register (materialisable without emitting code)
+         *   - dst_reg != lhs  (otherwise just fall through to the normal path)
+         *   - Either rhs is a register or rhs is a non-zero, signed-32-bit imm
+         *     (LEA displacement is 32-bit on x86-64; sign-extended to 64 bits)
+         */
+        bool lhs_differs_from_dst = lhs && strcmp(lhs, dst_reg) != 0;
+        if (lhs_differs_from_dst && rc && rv != 0 && rv >= (int64_t)-0x80000000LL && rv <= 0x7fffffff) {
+            char mem[64];
+            snprintf(mem, sizeof(mem), "[%s%+lld]", lhs, (long long)rv);
+            cg_emit(cg, "lea", dst_reg, mem);
+            break;
+        }
+        if (lhs_differs_from_dst && !rc && rhs && strcmp(rhs, lhs) != 0 && strcmp(rhs, dst_reg) != 0) {
+            char mem[64];
+            snprintf(mem, sizeof(mem), "[%s+%s]", lhs, rhs);
+            cg_emit(cg, "lea", dst_reg, mem);
+            break;
+        }
+
+        /* Standard two-address: mov dst, lhs; add dst, rhs */
         if (lhs && strcmp(lhs, dst_reg) != 0)
             cg_emit(cg, "mov", dst_reg, lhs);
         else if (!lhs) {
             cg_emit_into(cg, best->args[0], dst_reg);
         }
         /* Check if rhs is constant */
-        int64_t rv; bool rc=eg_is_const(g,best->args[1],&rv);
         if (rc) {
             char imm_s[32]; snprintf(imm_s,sizeof(imm_s),"%lld",(long long)rv);
             if (rv==1) cg_emit(cg,"inc",dst_reg,NULL);
@@ -1258,6 +1381,35 @@ static void flush_segment(EGraph *g, RegMap *rm,
     cg.rm     = rm;
     cg.out    = out;
     cg.is_att = is_att;
+
+    /*
+     * Choose real caller-saved scratch registers, avoiding any register
+     * already live in this segment's register map.  Fall back to synthetic
+     * names only if we run out of candidates (highly unusual in practice).
+     */
+    {
+        int si = 0;
+        for (int ci = 0; ci < MAX_SCRATCH && si < MAX_SCRATCH; ci++) {
+            bool in_use = false;
+            for (int ri = 0; ri < rm->nregs; ri++) {
+                if (rm->regs[ri].name &&
+                    strcmp(rm->regs[ri].name, CANDIDATE_SCRATCH[ci]) == 0) {
+                    in_use = true;
+                    break;
+                }
+            }
+            if (!in_use) {
+                snprintf(cg.scratch_names[si], sizeof(cg.scratch_names[si]),
+                         "%s", CANDIDATE_SCRATCH[ci]);
+                si++;
+            }
+        }
+        /* Fill remaining slots with synthetic names as fallback */
+        for (; si < MAX_SCRATCH; si++) {
+            snprintf(cg.scratch_names[si], sizeof(cg.scratch_names[si]),
+                     "__scratch%d__", si);
+        }
+    }
 
     /* Seed the slot table with all original input values
        (so we can reuse them when building expressions). */
