@@ -906,74 +906,6 @@ static int apply_rewrites(EGraph *g, const EgCpuModel *m)
             }
             break;
 
-        /* ── AND De Morgan ── */
-        case EG_AND: {
-            /*
-             * and(not(x), not(y)) = not(or(x,y))   [De Morgan's law]
-             *
-             * Walk both children's e-classes looking for NOT nodes so we can
-             * propose the equivalent or(…) form; the cost model will prefer
-             * whichever representation is cheaper.
-             */
-            uint32_t an0=EG_NULL, an1=EG_NULL;
-            if (a0!=EG_NULL) {
-                EClass *ca=&g->classes[a0];
-                for (uint32_t k=0;k<ca->nnodes;k++)
-                    if (g->nodes[ca->nodes[k]].op==EG_NOT)
-                        { an0=eg_find(g,g->nodes[ca->nodes[k]].args[0]); break; }
-            }
-            if (a1!=EG_NULL) {
-                EClass *ca=&g->classes[a1];
-                for (uint32_t k=0;k<ca->nnodes;k++)
-                    if (g->nodes[ca->nodes[k]].op==EG_NOT)
-                        { an1=eg_find(g,g->nodes[ca->nodes[k]].args[0]); break; }
-            }
-            if (an0!=EG_NULL && an1!=EG_NULL) {
-                uint32_t oargs[2]={an0,an1};
-                uint32_t or_ec=eg_add_op(g,EG_OR,oargs,2);
-                MERGE(ec,eg_add_op(g,EG_NOT,&or_ec,1));
-            }
-            break;
-        }
-
-        /* ── OR De Morgan ── */
-        case EG_OR: {
-            /* or(not(x), not(y)) = not(and(x,y)) */
-            uint32_t on0=EG_NULL, on1=EG_NULL;
-            if (a0!=EG_NULL) {
-                EClass *ca=&g->classes[a0];
-                for (uint32_t k=0;k<ca->nnodes;k++)
-                    if (g->nodes[ca->nodes[k]].op==EG_NOT)
-                        { on0=eg_find(g,g->nodes[ca->nodes[k]].args[0]); break; }
-            }
-            if (a1!=EG_NULL) {
-                EClass *ca=&g->classes[a1];
-                for (uint32_t k=0;k<ca->nnodes;k++)
-                    if (g->nodes[ca->nodes[k]].op==EG_NOT)
-                        { on1=eg_find(g,g->nodes[ca->nodes[k]].args[0]); break; }
-            }
-            if (on0!=EG_NULL && on1!=EG_NULL) {
-                uint32_t aargs[2]={on0,on1};
-                uint32_t and_ec=eg_add_op(g,EG_AND,aargs,2);
-                MERGE(ec,eg_add_op(g,EG_NOT,&and_ec,1));
-            }
-            break;
-        }
-
-        /* ── ADD extra rules ── */
-        case EG_ADD:
-            /* add(x,neg(x)) = 0 */
-            {
-                uint32_t neg0=EG_NULL;
-                EClass *ca1=&g->classes[a1];
-                for (uint32_t k=0;k<ca1->nnodes;k++)
-                    if (g->nodes[ca1->nodes[k]].op==EG_NEG)
-                        { neg0=eg_find(g,g->nodes[ca1->nodes[k]].args[0]); break; }
-                if (neg0!=EG_NULL && eg_equiv(g,a0,neg0))
-                    MERGE(ec,eg_add_const(g,0));
-            }
-            break;
-
         /* ── BSF / TZCNT equivalence ── */
         case EG_BSF:
             /*
@@ -1151,14 +1083,14 @@ static void cg_emit_into(CodeGen *cg, uint32_t ec, const char *dst_reg)
          *   - Either rhs is a register or rhs is a non-zero, signed-32-bit imm
          *     (LEA displacement is 32-bit on x86-64; sign-extended to 64 bits)
          */
-        bool lhs_is_reg = lhs && strcmp(lhs, dst_reg) != 0;
-        if (lhs_is_reg && rc && rv != 0 && rv >= -0x7fffffff && rv <= 0x7fffffff) {
+        bool lhs_differs_from_dst = lhs && strcmp(lhs, dst_reg) != 0;
+        if (lhs_differs_from_dst && rc && rv != 0 && rv >= (int64_t)-0x80000000LL && rv <= 0x7fffffff) {
             char mem[64];
             snprintf(mem, sizeof(mem), "[%s%+lld]", lhs, (long long)rv);
             cg_emit(cg, "lea", dst_reg, mem);
             break;
         }
-        if (lhs_is_reg && !rc && rhs && rhs != lhs && strcmp(rhs, dst_reg) != 0) {
+        if (lhs_differs_from_dst && !rc && rhs && strcmp(rhs, lhs) != 0 && strcmp(rhs, dst_reg) != 0) {
             char mem[64];
             snprintf(mem, sizeof(mem), "[%s+%s]", lhs, rhs);
             cg_emit(cg, "lea", dst_reg, mem);
