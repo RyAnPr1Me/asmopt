@@ -1308,6 +1308,7 @@ static void cg_emit_into(CodeGen *cg, uint32_t ec, const char *dst_reg)
 
     case EG_IMUL:
     case EG_MUL: {
+        /* rv/rc are used both in the LEA synthesis paths and the fallback imul path */
         int64_t rv; bool rc=eg_is_const(g,best->args[1],&rv);
         /* LEA synthesis for mul by 3, 5, 9: single instruction, no flag dep */
         if (rc && (rv==3 || rv==5 || rv==9)) {
