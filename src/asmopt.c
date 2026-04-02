@@ -13,7 +13,8 @@
  *   5. Reporting: Tracks and reports all optimizations applied
  * 
  * Key Features:
- *   - 33 peephole optimization patterns
+ *   - 34 peephole optimization patterns
+ *   - E-graph equality saturation with 60+ algebraic rewrite rules
  *   - Support for Intel and AT&T syntax
  *   - Comment and label preservation
  *   - Detailed optimization reporting
@@ -1179,10 +1180,10 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
     /*
      * Peephole Optimizer - Pattern Matching Engine
      * 
-     * This function implements 33 optimization patterns for x86-64 assembly:
-     * (8 identity + 1 redundant move + 12 instruction replacements + 2 control-flow
+     * This function implements 34 optimization patterns for x86-64 assembly:
+     * (8 identity + 1 redundant move + 13 instruction replacements + 2 control-flow
      *  + 1 dead-store + 1 scheduling + 1 cache-aware + 1 architecture-aware
-     *  + 1 load-modify-store + 5 new strength-reduction/encoding patterns)
+     *  + 1 load-modify-store)
      * 
      * Identity/No-op Eliminations (8 patterns):
      *   Pattern 1: mov rax, rax            → (removed)        - Redundant self-move
@@ -1199,7 +1200,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
      * Redundant Move Elimination (1 pattern):
      *   Pattern 12: mov a, b + mov b, a    → mov a, b         - Remove redundant move
      * 
-     * Instruction Replacements (12 patterns):
+     * Instruction Replacements (13 patterns):
      *   Pattern 2: mov rax, 0              → xor rax, rax     - Smaller encoding, breaks deps
      *   Pattern 4: imul rax, 8             → shl rax, 3       - Faster shift for power-of-2
      *   Pattern 10: add rax, 1             → inc rax          - Size opt (note: flag deps on P4+)
@@ -1215,6 +1216,7 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
      *   Pattern 30: xor rax, -1            → not rax          - Shorter NOT encoding
      *   Pattern 31: imul/mul rax, 0        → xor rax, rax     - Multiply by zero
      *   Pattern 32: add rax, rax           → shl rax, 1       - x*2 via shift
+     *   Pattern 34: imul rax, 3/5/9        → lea rax, [rax+rax*scale] - LEA strength reduction
      * 
      * Control-flow (2 patterns):
      *   Pattern 21: jmp next_label         → (removed)        - Fallthrough jump
@@ -2322,6 +2324,57 @@ static void asmopt_peephole_line(asmopt_context* ctx, size_t line_no, const char
                             indent, shl_name, spacing, dest, pre_space, post_space, shift_str);
                 }
                 asmopt_record_optimization(ctx, line_no, "mul_power_of_2_to_shift", line, newline);
+                asmopt_store_optimized_line(ctx, newline);
+                free(newline);
+                *replaced = true;
+            }
+            free(trimmed_comment);
+            goto cleanup;
+        }
+
+        /* Pattern 34: imul rax, 3/5/9 -> lea rax, [rax + rax*scale] (single instruction) */
+        if (dest_reg && success && (imm_val == 3 || imm_val == 5 || imm_val == 9)) {
+            int scale = (imm_val == 3) ? 2 : (imm_val == 5) ? 4 : 8;
+            char lea_name[8];
+            if (suffix) {
+                snprintf(lea_name, sizeof(lea_name), "lea%c", suffix);
+            } else {
+                snprintf(lea_name, sizeof(lea_name), "lea");
+            }
+            char mem_operand[64];
+            char* trimmed_comment = asmopt_trim_comment(comment);
+            if (syntax && strcmp(syntax, "att") == 0) {
+                snprintf(mem_operand, sizeof(mem_operand), "(%s,%s,%d)", dest, dest, scale);
+            } else {
+                snprintf(mem_operand, sizeof(mem_operand), "[%s+%s*%d]", dest, dest, scale);
+            }
+            size_t new_len = strlen(indent) + strlen(lea_name) + strlen(spacing) +
+                             strlen(dest) + strlen(pre_space) + strlen(post_space) +
+                             strlen(mem_operand) + 2;
+            if (!asmopt_is_blank(trimmed_comment)) {
+                new_len += strlen(trimmed_comment) + 1;
+            }
+            char* newline = malloc(new_len + 1);
+            if (newline) {
+                const char* first_op;
+                const char* second_op;
+                if (syntax && strcmp(syntax, "att") == 0) {
+                    first_op = mem_operand;
+                    second_op = dest;
+                } else {
+                    first_op = dest;
+                    second_op = mem_operand;
+                }
+                if (!asmopt_is_blank(trimmed_comment)) {
+                    snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s %s",
+                             indent, lea_name, spacing, first_op, pre_space, post_space,
+                             second_op, trimmed_comment);
+                } else {
+                    snprintf(newline, new_len + 1, "%s%s%s%s%s,%s%s",
+                             indent, lea_name, spacing, first_op, pre_space, post_space,
+                             second_op);
+                }
+                asmopt_record_optimization(ctx, line_no, "mul_by_3_5_9_to_lea", line, newline);
                 asmopt_store_optimized_line(ctx, newline);
                 free(newline);
                 *replaced = true;
