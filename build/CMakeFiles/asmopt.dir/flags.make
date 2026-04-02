@@ -6,5 +6,5 @@ C_DEFINES =
 
 C_INCLUDES = -I/home/runner/work/asmopt/asmopt/include
 
-C_FLAGS = -O3 -DNDEBUG -std=gnu11
+C_FLAGS = -O2 -O3 -DNDEBUG -std=gnu11
 
