@@ -5,7 +5,7 @@
  *
  *   1. Lift  : parse each instruction; track register versions (SSA-style);
  *              add e-nodes to the e-graph.
- *   2. Rewrite: apply 50+ algebraic and x86-specific rewrite rules until
+ *   2. Rewrite: apply 60+ algebraic and x86-specific rewrite rules until
  *               a fixed point (equality saturation).
  *   3. Extract: cost-based bottom-up DP to pick the optimal e-node per class.
  *   4. Codegen: emit a minimal instruction sequence that realises the
@@ -654,6 +654,35 @@ static int apply_rewrites(EGraph *g, const EgCpuModel *m)
                 if (neg0!=EG_NULL && eg_equiv(g,a0,neg0))
                     MERGE(ec,eg_add_const(g,0));
             }
+            /* add(sub(x,y),y) = x  (cancellation) */
+            if (a0!=EG_NULL) {
+                EClass *ca0=&g->classes[a0];
+                for (uint32_t k=0;k<ca0->nnodes;k++) {
+                    ENode *inner=&g->nodes[ca0->nodes[k]];
+                    if (inner->op==EG_SUB && inner->nargs==2) {
+                        uint32_t sx=eg_find(g,inner->args[0]);
+                        uint32_t sy=eg_find(g,inner->args[1]);
+                        if (a1!=EG_NULL && eg_equiv(g,sy,a1)) MERGE(ec,sx);
+                    }
+                }
+            }
+            /* add(add(x,a),b) = add(x,a+b) for constant a,b */
+            if (a1c && a0!=EG_NULL) {
+                EClass *ca0=&g->classes[a0];
+                for (uint32_t k=0;k<ca0->nnodes;k++) {
+                    ENode *inner=&g->nodes[ca0->nodes[k]];
+                    if (inner->op==EG_ADD && inner->nargs==2) {
+                        uint32_t ix=eg_find(g,inner->args[0]);
+                        uint32_t iy=eg_find(g,inner->args[1]);
+                        int64_t ic;
+                        if (eg_is_const(g,iy,&ic)) {
+                            uint32_t nc=eg_add_const(g,ic+cv1);
+                            uint32_t na[2]={ix,nc};
+                            MERGE(ec,eg_add_op(g,EG_ADD,na,2));
+                        }
+                    }
+                }
+            }
             break;
 
         /* ── SUB rules ── */
@@ -670,6 +699,19 @@ static int apply_rewrites(EGraph *g, const EgCpuModel *m)
             if (a1c && cv1==-1) MERGE(ec,eg_add_op(g,EG_INC,&a0,1));
             /* Constant folding */
             if (a0c && a1c) MERGE(ec,eg_add_const(g,cv0-cv1));
+            /* sub(add(x,y),y) = x and sub(add(y,x),y) = x  (cancellation) */
+            if (a0!=EG_NULL && a1!=EG_NULL) {
+                EClass *ca0=&g->classes[a0];
+                for (uint32_t k=0;k<ca0->nnodes;k++) {
+                    ENode *inner=&g->nodes[ca0->nodes[k]];
+                    if (inner->op==EG_ADD && inner->nargs==2) {
+                        uint32_t ax=eg_find(g,inner->args[0]);
+                        uint32_t ay=eg_find(g,inner->args[1]);
+                        if (eg_equiv(g,ay,a1)) MERGE(ec,ax);
+                        if (eg_equiv(g,ax,a1)) MERGE(ec,ay);
+                    }
+                }
+            }
             break;
 
         /* ── MUL / IMUL rules ── */
@@ -738,6 +780,48 @@ static int apply_rewrites(EGraph *g, const EgCpuModel *m)
                     MERGE(ec,eg_add_op(g,EG_NOT,&or_ec,1));
                 }
             }
+            /* and(x,not(x)) = 0 */
+            {
+                uint32_t nn=EG_NULL;
+                if (a1!=EG_NULL) {
+                    EClass *ca=&g->classes[a1];
+                    for (uint32_t k=0;k<ca->nnodes;k++)
+                        if (g->nodes[ca->nodes[k]].op==EG_NOT)
+                            { nn=eg_find(g,g->nodes[ca->nodes[k]].args[0]); break; }
+                }
+                if (nn!=EG_NULL && eg_equiv(g,a0,nn)) MERGE(ec,eg_add_const(g,0));
+                nn=EG_NULL;
+                if (a0!=EG_NULL) {
+                    EClass *ca=&g->classes[a0];
+                    for (uint32_t k=0;k<ca->nnodes;k++)
+                        if (g->nodes[ca->nodes[k]].op==EG_NOT)
+                            { nn=eg_find(g,g->nodes[ca->nodes[k]].args[0]); break; }
+                }
+                if (nn!=EG_NULL && eg_equiv(g,a1,nn)) MERGE(ec,eg_add_const(g,0));
+            }
+            /* and(x,or(x,y)) = x  (absorption) */
+            if (a1!=EG_NULL) {
+                EClass *ca1=&g->classes[a1];
+                for (uint32_t k=0;k<ca1->nnodes;k++) {
+                    ENode *inner=&g->nodes[ca1->nodes[k]];
+                    if (inner->op==EG_OR && inner->nargs==2) {
+                        uint32_t ox=eg_find(g,inner->args[0]);
+                        uint32_t oy=eg_find(g,inner->args[1]);
+                        if (eg_equiv(g,ox,a0)||eg_equiv(g,oy,a0)) { MERGE(ec,a0); break; }
+                    }
+                }
+            }
+            if (a0!=EG_NULL) {
+                EClass *ca0=&g->classes[a0];
+                for (uint32_t k=0;k<ca0->nnodes;k++) {
+                    ENode *inner=&g->nodes[ca0->nodes[k]];
+                    if (inner->op==EG_OR && inner->nargs==2) {
+                        uint32_t ox=eg_find(g,inner->args[0]);
+                        uint32_t oy=eg_find(g,inner->args[1]);
+                        if (eg_equiv(g,ox,a1)||eg_equiv(g,oy,a1)) { MERGE(ec,a1); break; }
+                    }
+                }
+            }
             break;
 
         /* ── OR rules ── */
@@ -772,6 +856,48 @@ static int apply_rewrites(EGraph *g, const EgCpuModel *m)
                     MERGE(ec,eg_add_op(g,EG_NOT,&and_ec,1));
                 }
             }
+            /* or(x,not(x)) = -1 */
+            {
+                uint32_t nn=EG_NULL;
+                if (a1!=EG_NULL) {
+                    EClass *ca=&g->classes[a1];
+                    for (uint32_t k=0;k<ca->nnodes;k++)
+                        if (g->nodes[ca->nodes[k]].op==EG_NOT)
+                            { nn=eg_find(g,g->nodes[ca->nodes[k]].args[0]); break; }
+                }
+                if (nn!=EG_NULL && eg_equiv(g,a0,nn)) MERGE(ec,eg_add_const(g,-1));
+                nn=EG_NULL;
+                if (a0!=EG_NULL) {
+                    EClass *ca=&g->classes[a0];
+                    for (uint32_t k=0;k<ca->nnodes;k++)
+                        if (g->nodes[ca->nodes[k]].op==EG_NOT)
+                            { nn=eg_find(g,g->nodes[ca->nodes[k]].args[0]); break; }
+                }
+                if (nn!=EG_NULL && eg_equiv(g,a1,nn)) MERGE(ec,eg_add_const(g,-1));
+            }
+            /* or(x,and(x,y)) = x  (absorption) */
+            if (a1!=EG_NULL) {
+                EClass *ca1=&g->classes[a1];
+                for (uint32_t k=0;k<ca1->nnodes;k++) {
+                    ENode *inner=&g->nodes[ca1->nodes[k]];
+                    if (inner->op==EG_AND && inner->nargs==2) {
+                        uint32_t ax=eg_find(g,inner->args[0]);
+                        uint32_t ay=eg_find(g,inner->args[1]);
+                        if (eg_equiv(g,ax,a0)||eg_equiv(g,ay,a0)) { MERGE(ec,a0); break; }
+                    }
+                }
+            }
+            if (a0!=EG_NULL) {
+                EClass *ca0=&g->classes[a0];
+                for (uint32_t k=0;k<ca0->nnodes;k++) {
+                    ENode *inner=&g->nodes[ca0->nodes[k]];
+                    if (inner->op==EG_AND && inner->nargs==2) {
+                        uint32_t ax=eg_find(g,inner->args[0]);
+                        uint32_t ay=eg_find(g,inner->args[1]);
+                        if (eg_equiv(g,ax,a1)||eg_equiv(g,ay,a1)) { MERGE(ec,a1); break; }
+                    }
+                }
+            }
             break;
 
         /* ── XOR rules ── */
@@ -786,6 +912,19 @@ static int apply_rewrites(EGraph *g, const EgCpuModel *m)
             if (a0c && cv0==-1) MERGE(ec,eg_add_op(g,EG_NOT,&a1,1));
             /* Constant folding */
             if (a0c && a1c) MERGE(ec,eg_add_const(g,cv0^cv1));
+            /* xor(xor(x,y),y) = x and xor(xor(x,y),x) = y  (self-inverse) */
+            if (a0!=EG_NULL) {
+                EClass *ca0=&g->classes[a0];
+                for (uint32_t k=0;k<ca0->nnodes;k++) {
+                    ENode *inner=&g->nodes[ca0->nodes[k]];
+                    if (inner->op==EG_XOR && inner->nargs==2) {
+                        uint32_t ix=eg_find(g,inner->args[0]);
+                        uint32_t iy=eg_find(g,inner->args[1]);
+                        if (a1!=EG_NULL && eg_equiv(g,iy,a1)) { MERGE(ec,ix); break; }
+                        if (a1!=EG_NULL && eg_equiv(g,ix,a1)) { MERGE(ec,iy); break; }
+                    }
+                }
+            }
             break;
 
         /* ── NOT rules ── */
@@ -838,6 +977,23 @@ static int apply_rewrites(EGraph *g, const EgCpuModel *m)
                 uint32_t args2[2]={a0,pw};
                 MERGE(ec,eg_add_op(g,EG_IMUL,args2,2));
             }
+            /* shl(shl(x,a),b) = shl(x,a+b) for constant shifts */
+            if (a1c && cv1>=0 && cv1<64 && a0!=EG_NULL) {
+                EClass *ca0=&g->classes[a0];
+                for (uint32_t k=0;k<ca0->nnodes;k++) {
+                    ENode *inner=&g->nodes[ca0->nodes[k]];
+                    if (inner->op==EG_SHL && inner->nargs==2) {
+                        uint32_t ia1=eg_find(g,inner->args[1]);
+                        int64_t is;
+                        if (eg_is_const(g,ia1,&is) && is>=0 && (cv1+is)<64) {
+                            uint32_t ns=eg_add_const(g,cv1+is);
+                            uint32_t ix=eg_find(g,inner->args[0]);
+                            uint32_t na[2]={ix,ns};
+                            MERGE(ec,eg_add_op(g,EG_SHL,na,2));
+                        }
+                    }
+                }
+            }
             break;
 
         /* ── SHR / SAR rules ── */
@@ -850,6 +1006,24 @@ static int apply_rewrites(EGraph *g, const EgCpuModel *m)
                     ? (int64_t)((uint64_t)cv0>>(unsigned)cv1)
                     : cv0>>(unsigned)cv1;
                 MERGE(ec,eg_add_const(g,res));
+            }
+            /* shr(shr(x,a),b) = shr(x,a+b) for constant shifts (logical) */
+            /* sar(sar(x,a),b) = sar(x,a+b) for constant shifts (arithmetic) */
+            if (a1c && cv1>=0 && cv1<64 && a0!=EG_NULL) {
+                EClass *ca0=&g->classes[a0];
+                for (uint32_t k=0;k<ca0->nnodes;k++) {
+                    ENode *inner=&g->nodes[ca0->nodes[k]];
+                    if (inner->op==n->op && inner->nargs==2) {
+                        uint32_t ia1=eg_find(g,inner->args[1]);
+                        int64_t is;
+                        if (eg_is_const(g,ia1,&is) && is>=0 && (cv1+is)<64) {
+                            uint32_t ns=eg_add_const(g,cv1+is);
+                            uint32_t ix=eg_find(g,inner->args[0]);
+                            uint32_t na[2]={ix,ns};
+                            MERGE(ec,eg_add_op(g,n->op,na,2));
+                        }
+                    }
+                }
             }
             break;
 
@@ -1134,10 +1308,32 @@ static void cg_emit_into(CodeGen *cg, uint32_t ec, const char *dst_reg)
 
     case EG_IMUL:
     case EG_MUL: {
+        /* rv/rc are used both in the LEA synthesis paths and the fallback imul path */
+        int64_t rv; bool rc=eg_is_const(g,best->args[1],&rv);
+        /* LEA synthesis for mul by 3, 5, 9: single instruction, no flag dep */
+        if (rc && (rv==3 || rv==5 || rv==9)) {
+            const char *base=cg_materialise(cg,best->args[0]);
+            if (base) {
+                int scale=(rv==3)?2:(rv==5)?4:8;
+                char mem[64];
+                snprintf(mem,sizeof(mem),"[%s+%s*%d]",base,base,scale);
+                cg_emit(cg,"lea",dst_reg,mem);
+                break;
+            }
+        }
+        /* LEA synthesis for mul by 2: lea dst, [src+src] */
+        if (rc && rv==2) {
+            const char *base=cg_materialise(cg,best->args[0]);
+            if (base && strcmp(base,dst_reg)!=0) {
+                char mem[64];
+                snprintf(mem,sizeof(mem),"[%s+%s]",base,base);
+                cg_emit(cg,"lea",dst_reg,mem);
+                break;
+            }
+        }
         const char *lhs = cg_materialise(cg, best->args[0]);
         if (lhs && strcmp(lhs,dst_reg)!=0) cg_emit(cg,"mov",dst_reg,lhs);
         else if (!lhs) cg_emit_into(cg,best->args[0],dst_reg);
-        int64_t rv; bool rc=eg_is_const(g,best->args[1],&rv);
         if (rc) {
             char imm_s[32]; snprintf(imm_s,sizeof(imm_s),"%lld",(long long)rv);
             cg_emit(cg,"imul",dst_reg,imm_s);

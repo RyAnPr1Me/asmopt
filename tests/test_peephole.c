@@ -91,7 +91,9 @@ static int test_mul_power_of_2() {
     char* output = asmopt_generate_assembly(ctx);
     TEST_ASSERT(output != NULL, "Failed to generate output");
     TEST_ASSERT(strstr(output, "shl rax, 3") != NULL, "Power of 2 multiply not converted to shift");
-    TEST_ASSERT(strstr(output, "imul rbx, 3") != NULL, "Non-power-of-2 multiply was changed");
+    /* imul reg, 3 → lea reg, [reg+reg*2] (single instruction, faster) */
+    TEST_ASSERT(strstr(output, "imul rbx, 3") == NULL, "Non-power-of-2 multiply by 3 should be optimized");
+    TEST_ASSERT(strstr(output, "lea rbx, [rbx+rbx*2]") != NULL, "Multiply by 3 not converted to LEA");
     
     free(output);
     asmopt_destroy(ctx);
